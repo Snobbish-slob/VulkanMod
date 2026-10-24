@@ -108,6 +108,7 @@ public class GraphicsPipeline extends Pipeline {
 
             final int polygonMode = PipelineState.AssemblyRasterState.decodePolygonMode(state.assemblyRasterState);
             final int cullMode = PipelineState.AssemblyRasterState.decodeCullMode(state.assemblyRasterState);
+            final int frontFace = PipelineState.AssemblyRasterState.decodeFrontFace(state.assemblyRasterState);
 
             VkPipelineRasterizationStateCreateInfo rasterizer = VkPipelineRasterizationStateCreateInfo.calloc(stack);
             rasterizer.sType(VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO);
@@ -116,7 +117,7 @@ public class GraphicsPipeline extends Pipeline {
             rasterizer.polygonMode(polygonMode);
             rasterizer.lineWidth(1.0f);
             rasterizer.cullMode(cullMode);
-            rasterizer.frontFace(VK_FRONT_FACE_COUNTER_CLOCKWISE);
+            rasterizer.frontFace(frontFace);
             rasterizer.depthBiasEnable(true);
 
             // ===> MULTISAMPLING <===

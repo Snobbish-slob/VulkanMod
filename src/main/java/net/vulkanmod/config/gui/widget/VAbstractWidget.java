@@ -1,5 +1,6 @@
 package net.vulkanmod.config.gui.widget;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
@@ -113,7 +114,7 @@ public abstract class VAbstractWidget extends GuiElement {
     }
 
     protected boolean isValidClickButton(int button) {
-        return button == 0;
+        return button == InputConstants.MOUSE_BUTTON_LEFT;
     }
 
     @Override
