@@ -1,115 +1,165 @@
 package net.vulkanmod.config.video;
 
-import com.mojang.blaze3d.platform.Monitor;
+import com.mojang.blaze3d.platform.VideoMode;
 import com.mojang.blaze3d.platform.Window;
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import net.minecraft.client.Minecraft;
 import net.vulkanmod.Initializer;
 import net.vulkanmod.config.Config;
-import org.lwjgl.glfw.GLFW;
-import org.lwjgl.glfw.GLFWVidMode;
+import org.lwjgl.PointerBuffer;
+import org.lwjgl.sdl.SDLStdinc;
+import org.lwjgl.sdl.SDLVideo;
+import org.lwjgl.sdl.SDL_DisplayMode;
 
+import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
-import static java.lang.Math.clamp;
-import static org.lwjgl.glfw.GLFW.*;
-
+/**
+ * Enumerates display modes through SDL3 and applies the selected mode through the vanilla Window,
+ * which owns fullscreen handling in Minecraft 26.3.
+ */
 public abstract class VideoModeManager {
-    public static Long2ObjectMap<Monitor> monitors;
-    public static Long2ObjectMap<VideoModeSet[]> monitorToVideoModeSets = new Long2ObjectOpenHashMap<>();
-    public static Long2ObjectMap<VideoModeSet.VideoMode> osVideoModes = new Long2ObjectOpenHashMap<>();
+    public static Int2ObjectMap<VideoModeSet[]> monitorToVideoModeSets = new Int2ObjectOpenHashMap<>();
+    public static Int2ObjectMap<VideoModeSet.VideoMode> osVideoModes = new Int2ObjectOpenHashMap<>();
 
-    public static long selectedMonitor;
+    public static int selectedMonitor;
     public static VideoModeSet.VideoMode selectedVideoMode;
 
-    public static void init(Long2ObjectMap<Monitor> monitors) {
-        VideoModeManager.monitors = monitors;
+    public static void refresh() {
         monitorToVideoModeSets.clear();
+        osVideoModes.clear();
 
-        for (long monitor : VideoModeManager.monitors.keySet()) {
-            addMonitorVideoModes(monitor);
+        IntBuffer displays = SDLVideo.SDL_GetDisplays();
+        if (displays != null) {
+            try {
+                for (int i = 0; i < displays.limit(); i++) {
+                    addMonitorVideoModes(displays.get(i));
+                }
+            } finally {
+                SDLStdinc.SDL_free(displays);
+            }
         }
     }
 
-    public static void addMonitorVideoModes(long monitor) {
-        monitorToVideoModeSets.put(monitor, getVideoResolutions(monitor));
-        osVideoModes.put(monitor, getCurrentVideoMode(monitor));
+    public static void addMonitorVideoModes(int displayId) {
+        monitorToVideoModeSets.put(displayId, getVideoResolutions(displayId));
+        VideoModeSet.VideoMode current = getCurrentVideoMode(displayId);
+        if (current != null) {
+            osVideoModes.put(displayId, current);
+        }
     }
 
-    public static void removeMonitor(long monitor) {
-        monitorToVideoModeSets.remove(monitor);
-        osVideoModes.remove(monitor);
+    public static void removeMonitor(int displayId) {
+        monitorToVideoModeSets.remove(displayId);
+        osVideoModes.remove(displayId);
     }
 
     public static void applySelectedVideoMode() {
         Initializer.CONFIG.videoMode = selectedVideoMode;
+
+        Minecraft minecraft = Minecraft.getInstance();
+        Window window = minecraft.getWindow();
+        VideoMode videoMode = toVanilla(selectedVideoMode);
+
+        minecraft.options.fullscreenVideoModeString = videoMode.write();
+        window.setPreferredFullscreenVideoMode(Optional.of(videoMode));
+        window.changeFullscreenVideoMode();
+    }
+
+    private static VideoMode toVanilla(VideoModeSet.VideoMode videoMode) {
+        int bits = videoMode.bitDepth > 0 ? videoMode.bitDepth : 8;
+        return new VideoMode(videoMode.width, videoMode.height, bits, bits, bits, videoMode.refreshRate);
     }
 
     public static VideoModeSet[] getVideoResolutions() {
-        return monitorToVideoModeSets.get(selectedMonitor);
+        VideoModeSet[] sets = monitorToVideoModeSets.get(selectedMonitor);
+        return sets != null ? sets : new VideoModeSet[] { VideoModeSet.getDummy() };
     }
 
     public static VideoModeSet getFirstAvailable() {
-        var videoModeSets = monitorToVideoModeSets.get(glfwGetPrimaryMonitor());
+        if (monitorToVideoModeSets.isEmpty()) {
+            refresh();
+        }
 
-        if (videoModeSets != null)
+        var videoModeSets = monitorToVideoModeSets.get(SDLVideo.SDL_GetPrimaryDisplay());
+
+        if (videoModeSets == null && !monitorToVideoModeSets.isEmpty()) {
+            videoModeSets = monitorToVideoModeSets.values().iterator().next();
+        }
+
+        if (videoModeSets != null && videoModeSets.length > 0)
             return videoModeSets[videoModeSets.length - 1];
         else
-            return null;
+            return VideoModeSet.getDummy();
     }
 
     public static VideoModeSet.VideoMode getOsVideoMode() {
         return osVideoModes.get(selectedMonitor);
     }
 
-    public static VideoModeSet.VideoMode getCurrentVideoMode(long monitor){
-        GLFWVidMode vidMode = GLFW.glfwGetVideoMode(monitor);
+    public static VideoModeSet.VideoMode getCurrentVideoMode(int displayId) {
+        SDL_DisplayMode mode = SDLVideo.SDL_GetDesktopDisplayMode(displayId);
+        if (mode == null)
+            return null;
 
-        if (vidMode == null)
-            throw new NullPointerException("Unable to get current video mode");
-
-        return new VideoModeSet.VideoMode(vidMode.width(), vidMode.height(), vidMode.redBits(), vidMode.refreshRate());
+        return new VideoModeSet.VideoMode(mode.w(), mode.h(), 8, Math.round(mode.refresh_rate()));
     }
 
-    public static VideoModeSet[] getVideoResolutions(long monitor) {
-        GLFWVidMode.Buffer buffer = GLFW.glfwGetVideoModes(monitor);
-
+    public static VideoModeSet[] getVideoResolutions(int displayId) {
         List<VideoModeSet> videoModeSets = new ArrayList<>();
 
-        int currWidth = 0, currHeight = 0, currBitDepth = 0;
-        VideoModeSet videoModeSet = null;
+        PointerBuffer modes = SDLVideo.SDL_GetFullscreenDisplayModes(displayId);
+        if (modes != null) {
+            try {
+                int currWidth = 0, currHeight = 0;
+                VideoModeSet videoModeSet = null;
 
-        for (int i = 0; i < buffer.limit(); i++) {
-            buffer.position(i);
-            int bitDepth = buffer.redBits();
-            if (buffer.redBits() < 8 || buffer.greenBits() != bitDepth || buffer.blueBits() != bitDepth)
-                continue;
+                for (int i = modes.limit() - 1; i >= 0; i--) {
+                    SDL_DisplayMode mode = SDL_DisplayMode.create(modes.get(i));
 
-            int width = buffer.width();
-            int height = buffer.height();
-            int refreshRate = buffer.refreshRate();
+                    int width = mode.w();
+                    int height = mode.h();
+                    int refreshRate = Math.round(mode.refresh_rate());
 
-            if (currWidth != width || currHeight != height || currBitDepth != bitDepth) {
-                currWidth = width;
-                currHeight = height;
-                currBitDepth = bitDepth;
+                    if (currWidth != width || currHeight != height) {
+                        currWidth = width;
+                        currHeight = height;
 
-                videoModeSet = new VideoModeSet(currWidth, currHeight, currBitDepth);
-                videoModeSets.add(videoModeSet);
+                        videoModeSet = new VideoModeSet(currWidth, currHeight, 8);
+                        videoModeSets.add(videoModeSet);
+                    }
+
+                    if (!videoModeSet.hasRefreshRate(refreshRate)) {
+                        videoModeSet.addRefreshRate(refreshRate);
+                    }
+                }
+            } finally {
+                SDLStdinc.SDL_free(modes);
             }
+        }
 
-            videoModeSet.addRefreshRate(refreshRate);
+        if (videoModeSets.isEmpty()) {
+            VideoModeSet.VideoMode current = getCurrentVideoMode(displayId);
+            if (current != null) {
+                VideoModeSet set = new VideoModeSet(current.width, current.height, current.bitDepth);
+                set.addRefreshRate(current.refreshRate);
+                videoModeSets.add(set);
+            }
         }
 
         VideoModeSet[] arr = new VideoModeSet[videoModeSets.size()];
         videoModeSets.toArray(arr);
-
         return arr;
     }
 
     public static VideoModeSet getVideoModeSet(VideoModeSet.VideoMode videoMode) {
         var videoModeSets = monitorToVideoModeSets.get(selectedMonitor);
+        if (videoModeSets == null)
+            return null;
+
         for (var set : videoModeSets) {
             if (set.width == videoMode.width && set.height == videoMode.height)
                 return set;
@@ -119,66 +169,23 @@ public abstract class VideoModeManager {
     }
 
     public static void selectBestMonitor(Window window) {
-        selectedMonitor = findBestMonitor(window).getMonitor();
+        refresh();
 
-        if (selectedMonitor == 0L) {
+        selectedMonitor = SDLVideo.SDL_GetDisplayForWindow(window.handle());
+
+        if (selectedMonitor == 0) {
             // Fallback to primary in case of null handle
-            selectedMonitor = GLFW.glfwGetPrimaryMonitor();
+            selectedMonitor = SDLVideo.SDL_GetPrimaryDisplay();
         }
     }
 
     public static void checkConfigVideoMode(Config config) {
         var videoMode = config.videoMode;
+
         if (videoMode.width <= 0 || videoMode.height <= 0 || videoMode.refreshRate <= 0) {
             videoMode = getFirstAvailable().getVideoMode();
             config.videoMode = videoMode;
             config.write();
         }
-    }
-
-
-
-    public static Monitor findBestMonitor(final Window window) {
-        long windowMonitor = GLFW.glfwGetWindowMonitor(window.handle());
-        if (windowMonitor != 0L) {
-            return monitors.get(windowMonitor);
-        } else {
-            int winMinX = window.getX();
-            int winMaxX = winMinX + window.getScreenWidth();
-            int winMinY = window.getY();
-            int winMaxY = winMinY + window.getScreenHeight();
-            int maxArea = -1;
-            Monitor result = null;
-            long primaryMonitor = GLFW.glfwGetPrimaryMonitor();
-            Initializer.LOGGER.debug("Selecting monitor - primary: {}, current monitors: {}", primaryMonitor, monitors);
-
-            for (Monitor monitor : monitors.values()) {
-                int monMinX = monitor.getX();
-                int monMaxX = monMinX + monitor.getCurrentMode().getWidth();
-                int monMinY = monitor.getY();
-                int monMaxY = monMinY + monitor.getCurrentMode().getHeight();
-                int minX = clamp(winMinX, monMinX, monMaxX);
-                int maxX = clamp(winMaxX, monMinX, monMaxX);
-                int minY = clamp(winMinY, monMinY, monMaxY);
-                int maxY = clamp(winMaxY, monMinY, monMaxY);
-                int sx = Math.max(0, maxX - minX);
-                int sy = Math.max(0, maxY - minY);
-                int area = sx * sy;
-                if (area > maxArea) {
-                    result = monitor;
-                    maxArea = area;
-                } else if (area == maxArea && primaryMonitor == monitor.getMonitor()) {
-                    Initializer.LOGGER.debug("Primary monitor {} is preferred to monitor {}", monitor, result);
-                    result = monitor;
-                }
-            }
-
-            Initializer.LOGGER.debug("Selected monitor: {}", result);
-            return result;
-        }
-    }
-
-    public static Long2ObjectMap<Monitor> getMonitors() {
-        return monitors;
     }
 }

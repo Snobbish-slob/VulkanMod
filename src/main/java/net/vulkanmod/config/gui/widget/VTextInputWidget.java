@@ -11,7 +11,8 @@ import net.vulkanmod.config.gui.render.GuiRenderer;
 import net.vulkanmod.config.gui.util.VGuiConstants;
 import net.vulkanmod.vulkan.util.ColorUtil;
 import org.jetbrains.annotations.Nullable;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
+import org.lwjgl.sdl.SDLKeyboard;
 
 import java.util.function.Consumer;
 
@@ -99,7 +100,7 @@ public class VTextInputWidget extends VAbstractWidget {
         boolean shift = keyEvent.hasShiftDown();
         boolean ctrl = keyEvent.hasControlDown();
 
-        if (keyEvent.key() == GLFW.GLFW_KEY_ENTER || keyEvent.key() == GLFW.GLFW_KEY_KP_ENTER) {
+        if (keyEvent.isConfirmation()) {
             this.onSearch.accept(this);
             return true;
         }
@@ -108,7 +109,7 @@ public class VTextInputWidget extends VAbstractWidget {
             int start = Math.min(cursorPos, selectionEnd);
             int end = Math.max(cursorPos, selectionEnd);
 
-            if (keyEvent.key() == GLFW.GLFW_KEY_BACKSPACE || keyEvent.key() == GLFW.GLFW_KEY_DELETE) {
+            if (keyEvent.key() == InputConstants.KEY_BACKSPACE || keyEvent.key() == InputConstants.KEY_DELETE) {
                 this.text = text.substring(0, start) + text.substring(end);
                 cursorPos = start;
                 selectionEnd = start;
@@ -117,7 +118,7 @@ public class VTextInputWidget extends VAbstractWidget {
             }
         }
 
-        if (keyEvent.key() == GLFW.GLFW_KEY_BACKSPACE) {
+        if (keyEvent.key() == InputConstants.KEY_BACKSPACE) {
             if (cursorPos > 0) {
                 this.text = text.substring(0, cursorPos - 1) + text.substring(cursorPos);
                 cursorPos--;
@@ -127,7 +128,7 @@ public class VTextInputWidget extends VAbstractWidget {
             return true;
         }
 
-        if (keyEvent.key() == GLFW.GLFW_KEY_DELETE) {
+        if (keyEvent.key() == InputConstants.KEY_DELETE) {
             if (cursorPos < text.length()) {
                 this.text = text.substring(0, cursorPos) + text.substring(cursorPos + 1);
                 this.onSearch.accept(this);
@@ -135,24 +136,24 @@ public class VTextInputWidget extends VAbstractWidget {
             return true;
         }
 
-        if (ctrl && keyEvent.key() == GLFW.GLFW_KEY_A) {
+        if (keyEvent.isSelectAll()) {
             cursorPos = text.length();
             selectionEnd = 0;
             return true;
         }
 
-        if (keyEvent.key() == GLFW.GLFW_KEY_LEFT) {
+        if (keyEvent.key() == InputConstants.KEY_LEFT) {
             if (cursorPos > 0) cursorPos--;
             if (!shift) selectionEnd = cursorPos;
             return true;
         }
-        if (keyEvent.key() == GLFW.GLFW_KEY_RIGHT) {
+        if (keyEvent.key() == InputConstants.KEY_RIGHT) {
             if (cursorPos < text.length()) cursorPos++;
             if (!shift) selectionEnd = cursorPos;
             return true;
         }
 
-        String keyName = GLFW.glfwGetKeyName(keyEvent.key(), keyEvent.scancode());
+        String keyName = SDLKeyboard.SDL_GetKeyName(keyEvent.keycode());
         if (keyName != null && keyName.length() == 1) {
             char c = keyEvent.hasShiftDown() ? keyName.toUpperCase().charAt(0) : keyName.charAt(0);
 

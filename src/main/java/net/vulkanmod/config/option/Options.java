@@ -21,7 +21,6 @@ import java.util.stream.IntStream;
 
 public abstract class Options {
 
-    public static boolean fullscreenDirty = false;
 
     private static final Config config = Initializer.CONFIG;
     private static final Minecraft minecraft = Minecraft.getInstance();
@@ -77,12 +76,14 @@ public abstract class Options {
         var windowModeOption = new CyclingOption<>(Component.translatable("vulkanmod.options.windowMode"),
                                                    WindowMode.values(),
                                                    value -> {
+                                                       boolean fullscreen = value != WindowMode.WINDOWED;
                                                        boolean exclusiveFullscreen = value == WindowMode.EXCLUSIVE_FULLSCREEN;
-                                                       mcOptions.fullscreen()
-                                                                       .set(exclusiveFullscreen);
+
+                                                       // The vanilla Window owns fullscreen handling on SDL3; these setters apply it
+                                                       mcOptions.exclusiveFullscreen().set(exclusiveFullscreen);
+                                                       mcOptions.fullscreen().set(fullscreen);
 
                                                        config.windowMode = value.mode;
-                                                       fullscreenDirty = true;
                                                    },
                                                    () -> WindowMode.fromValue(config.windowMode))
                 .setTranslator(value -> Component.translatable(WindowMode.getComponentName(value)));
@@ -93,10 +94,6 @@ public abstract class Options {
                 (value) -> {
                     VideoModeManager.selectedVideoMode.refreshRate = value;
                     VideoModeManager.applySelectedVideoMode();
-
-                    if (mcOptions.fullscreen().get()) {
-                        fullscreenDirty = true;
-                    }
                 },
                 () -> VideoModeManager.selectedVideoMode.refreshRate)
                 .setTranslator(refreshRate -> Component.nullToEmpty(refreshRate.toString()))
@@ -108,10 +105,6 @@ public abstract class Options {
                 (value) -> {
                     VideoModeManager.selectedVideoMode = value.getVideoMode(refreshRateOption.getNewValue());
                     VideoModeManager.applySelectedVideoMode();
-
-                    if (mcOptions.fullscreen().get()) {
-                        fullscreenDirty = true;
-                    }
                 },
                 () -> {
                     var selectedVideoMode = VideoModeManager.selectedVideoMode;

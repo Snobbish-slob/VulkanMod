@@ -2,7 +2,6 @@ package net.vulkanmod.mixin.debug;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyboardHandler;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.KeyEvent;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -17,11 +16,11 @@ public abstract class KeyboardHandlerM {
 
     @Shadow private boolean usedDebugKeyAsModifier;
 
-    @Inject(method = "keyPress", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/KeyMapping;set(Lcom/mojang/blaze3d/platform/InputConstants$Key;Z)V", ordinal = 1))
-    private void chunkDebug(long l, int i, KeyEvent keyEvent, CallbackInfo ci) {
-        // GLFW key 296 -> F7
-        // U -> Capture frustum
-        this.usedDebugKeyAsModifier |= InputConstants.isKeyDown(Minecraft.getInstance().getWindow(), 296)
-                && this.handleChunkDebugKeys(keyEvent);
+    @Inject(method = "keyPress", at = @At("HEAD"))
+    private void chunkDebug(long handle, int action, KeyEvent keyEvent, CallbackInfo ci) {
+        // F7 + chunk debug key (e.g. U -> capture frustum), independent of the vanilla debug hotkey flag
+        if (action == InputConstants.PRESS && InputConstants.isKeyDown(InputConstants.KEY_F7)) {
+            this.usedDebugKeyAsModifier |= this.handleChunkDebugKeys(keyEvent);
+        }
     }
 }

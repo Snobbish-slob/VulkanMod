@@ -1,9 +1,10 @@
 package net.vulkanmod.mixin.wayland;
 
+import com.mojang.blaze3d.platform.InputConstants;
+
 import net.minecraft.client.KeyboardHandler;
 import net.minecraft.client.input.CharacterEvent;
 import net.vulkanmod.config.Platform;
-import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -24,7 +25,7 @@ public class KeyboardHandlerM {
      */
     @Inject(method = "charTyped", at = @At("HEAD"), cancellable = true)
     private void cancelCtrlCharTyped(long window, CharacterEvent event, CallbackInfo ci) {
-        if (Platform.isWayLand() && (event.modifiers() & GLFW.GLFW_MOD_CONTROL) != 0) {
+        if (Platform.isWayLand() && (InputConstants.isKeyDown(InputConstants.KEY_LCONTROL) || InputConstants.isKeyDown(InputConstants.KEY_RCONTROL))) {
             ci.cancel();
         }
     }

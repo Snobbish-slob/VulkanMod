@@ -2,78 +2,80 @@ package net.vulkanmod.config;
 
 import net.minecraft.util.Util;
 import org.apache.commons.lang3.SystemUtils;
-import org.lwjgl.glfw.GLFW;
+import org.lwjgl.sdl.SDLHints;
+import org.lwjgl.sdl.SDLVideo;
 
 import static net.vulkanmod.Initializer.CONFIG;
 import static net.vulkanmod.Initializer.LOGGER;
-import static org.lwjgl.glfw.GLFW.*;
 
+/**
+ * Platform detection. Minecraft 26.3 creates its window through SDL3; the only thing VulkanMod has
+ * to decide before SDL is initialised is which Linux video driver (Wayland or X11) SDL should use.
+ */
 public abstract class Platform {
     public static final Util.OS OS = Util.getPlatform();
-    private static int activePlat;
+
+    private static String requestedDriver;
     private static String activeDE;
 
     public static void init() {
-        activePlat = getSupportedPlat();
+        requestedDriver = getRequestedVideoDriver();
         activeDE = determineDE();
 
-        GLFW.glfwInitHint(GLFW_PLATFORM, activePlat);
-        LOGGER.info("Selecting Platform: {}", getStringFromPlat());
-        LOGGER.info("GLFW: {}", GLFW.glfwGetVersionString());
-        GLFW.glfwInit();
+        if (requestedDriver != null) {
+            // Must be set before RenderSystem.initBackendSystem() calls SDL_Init
+            SDLHints.SDL_SetHint(SDLHints.SDL_HINT_VIDEO_DRIVER, requestedDriver);
+        }
+
+        LOGGER.info("Selecting Platform: {}", requestedDriver != null ? requestedDriver.toUpperCase() : getStringFromPlat());
     }
 
-    // Actually detect the currently active Display Server (if both Wayland and X11 are present on the system and/or GLFW is compiled to support both)
-    private static int determineLinuxDisplayServer() {
-        // Return Null platform if not on Linux (i.e. no X11 or Wayland)
+    // Actually detect the currently active Display Server (if both Wayland and X11 are present on the system)
+    private static String determineLinuxDisplayServer() {
         String xdgSessionType = System.getenv("XDG_SESSION_TYPE");
-        if (xdgSessionType == null) return GLFW_ANY_PLATFORM; // Likely Android
+
+        if (xdgSessionType == null) return null; // Likely Android
+
         return switch (xdgSessionType) {
-            case "wayland" -> {
-                if (CONFIG.useWayland) {
-                    yield GLFW_PLATFORM_WAYLAND;
-                }
-                else {
-                    yield GLFW_PLATFORM_X11;
-                }
-            }
-            case "x11" -> GLFW_PLATFORM_X11;
-            default -> GLFW_ANY_PLATFORM; //Either unknown Platform or Display Server
+            case "wayland" -> CONFIG.useWayland ? "wayland" : "x11";
+            case "x11" -> "x11";
+            default -> null; //Either unknown Platform or Display Server
         };
     }
 
-    private static int getSupportedPlat() {
-        //Switch statement would be ideal, but couldn't find a good way of implementing it, so fell back to basic if statements/branches
-        if (SystemUtils.IS_OS_WINDOWS) return GLFW_PLATFORM_WIN32;
-        if (SystemUtils.IS_OS_MAC_OSX) return GLFW_PLATFORM_COCOA;
+    private static String getRequestedVideoDriver() {
         if (SystemUtils.IS_OS_LINUX) return determineLinuxDisplayServer(); //Linux Or Android
-
-        return GLFW_ANY_PLATFORM; //Unknown platform
+        return null; // Let SDL pick on Windows, macOS and unknown platforms
     }
 
     private static String getStringFromPlat() {
-        return switch (Platform.activePlat) {
-            case GLFW_PLATFORM_WIN32 -> "WIN32";
-            case GLFW_PLATFORM_WAYLAND -> "WAYLAND";
-            case GLFW_PLATFORM_X11 -> "X11";
-            case GLFW_PLATFORM_COCOA -> "MACOS";
-            case GLFW_ANY_PLATFORM -> "ANDROID";
-            default -> throw new IllegalStateException("Unexpected value: " + Platform.activePlat);
-        };
+        if (SystemUtils.IS_OS_WINDOWS) return "WIN32";
+        if (SystemUtils.IS_OS_MAC_OSX) return "MACOS";
+        if (SystemUtils.IS_OS_LINUX) return "LINUX";
+        return "UNKNOWN";
     }
 
     private static String determineDE() {
         String xdgSessionDesktop = System.getenv("XDG_SESSION_DESKTOP");
         String xdgCurrentDesktop = System.getenv("XDG_CURRENT_DESKTOP");
+
         if (xdgSessionDesktop != null)
             return xdgSessionDesktop.toLowerCase();
+
         if (xdgCurrentDesktop != null)
             return xdgCurrentDesktop.toLowerCase();
+
         return "N/A";
     }
 
+    /** Name of the SDL video driver in use, or the requested one before SDL is initialised. */
+    public static String getVideoDriver() {
+        String current = SDLVideo.SDL_GetCurrentVideoDriver();
+        return current != null ? current : requestedDriver;
+    }
+
     public static boolean isWindows() {
-        return OS == Util.OS.LINUX;
+        return OS == Util.OS.WINDOWS;
     }
 
     public static boolean isLinux() {
@@ -84,21 +86,17 @@ public abstract class Platform {
         return OS == Util.OS.OSX;
     }
 
-    public static int getActivePlat() {
-        return activePlat;
-    }
-
     public static boolean isAndroid() {
-        return activePlat == GLFW_ANY_PLATFORM;
+        return SystemUtils.IS_OS_LINUX && System.getenv("XDG_SESSION_TYPE") == null && requestedDriver == null;
     }
 
     //Allows platform specific checks to be handled
     public static boolean isWayLand() {
-        return activePlat == GLFW_PLATFORM_WAYLAND;
+        return "wayland".equals(getVideoDriver());
     }
 
     public static boolean isX11() {
-        return activePlat == GLFW_PLATFORM_X11;
+        return "x11".equals(getVideoDriver());
     }
 
     //Desktop Environment Names: https://wiki.archlinux.org/title/Xdg-utils#Usage

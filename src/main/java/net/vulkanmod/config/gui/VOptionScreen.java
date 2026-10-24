@@ -2,7 +2,8 @@ package net.vulkanmod.config.gui;
 
 import com.google.common.collect.Lists;
 import net.minecraft.ChatFormatting;
-import net.minecraft.util.Util;
+import com.mojang.blaze3d.Blaze3D;
+import java.net.URI;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.events.GuiEventListener;
@@ -23,7 +24,7 @@ import net.vulkanmod.config.gui.widget.*;
 import net.vulkanmod.config.option.*;
 import net.vulkanmod.vulkan.VRenderSystem;
 import net.vulkanmod.vulkan.util.ColorUtil;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -292,7 +293,7 @@ public class VOptionScreen extends Screen {
         int kofiX = this.width - kofiWidth - rightMargin;
         VButtonWidget supportButton = new VButtonWidget(kofiX, 4, kofiWidth, VGuiConstants.WIDGET_HEIGHT,
                 Component.translatable("vulkanmod.options.buttons.kofi"),
-                button -> Util.getPlatform().openUri("https://ko-fi.com/xcollateral"));
+                button -> Blaze3D.openUri(URI.create("https://ko-fi.com/xcollateral")));
 
         this.buttons.add(this.applyButton);
         this.buttons.add(doneButton);
@@ -312,7 +313,7 @@ public class VOptionScreen extends Screen {
                     kofiX - updateWidth - VGuiConstants.WIDGET_MARGIN, 4,
                     updateWidth, VGuiConstants.WIDGET_HEIGHT,
                     Component.translatable("vulkanmod.options.buttons.update_available").withStyle(ChatFormatting.UNDERLINE),
-                    button -> Util.getPlatform().openUri("https://modrinth.com/mod/vulkanmod")
+                    button -> Blaze3D.openUri(URI.create("https://modrinth.com/mod/vulkanmod"))
             );
             this.buttons.add(updateButton);
             this.addWidget(updateButton);
@@ -488,7 +489,7 @@ public class VOptionScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent keyEvent) {
-        if (keyEvent.hasControlDown() && keyEvent.key() == GLFW.GLFW_KEY_L) {
+        if (keyEvent.hasControlDown() && keyEvent.key() == InputConstants.KEY_L) {
             this.setFocused(searchField);
             searchField.setFocused(true);
             searchField.setSelected(true);
@@ -496,7 +497,7 @@ public class VOptionScreen extends Screen {
             return true;
         }
 
-        if (keyEvent.key() == GLFW.GLFW_KEY_ESCAPE && this.isSearchActive) {
+        if (keyEvent.key() == InputConstants.KEY_ESCAPE && this.isSearchActive) {
             this.isSearchActive = false;
             this.searchField.setInput("");
             this.searchField.setFocused(false);
@@ -507,7 +508,7 @@ public class VOptionScreen extends Screen {
 
 
         if (!this.searchField.focused
-                && keyEvent.key() == GLFW.GLFW_KEY_P
+                && keyEvent.key() == InputConstants.KEY_P
                 && keyEvent.hasShiftDown()) {
             Minecraft.getInstance().gui.setScreen(new VideoSettingsScreen(this, Minecraft.getInstance(), Minecraft.getInstance().options));
 

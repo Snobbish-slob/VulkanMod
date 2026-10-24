@@ -7,9 +7,6 @@
   "mixins": [
   ],
   "client": [
-    "window.ScreenManagerMixin",
-    "window.WindowMixin",
-    "window.WindowAccessor",
 
     "chunk.ClientPacketListenerM",
     "chunk.ClientChunkCacheM",
@@ -71,10 +68,7 @@
     "texture.update.MTextureManager",
     "util.ScreenshotMixin",
     "vertex.SpriteCoordinateExpanderM",
-
-    "wayland.InputConstantsM",
     "wayland.KeyboardHandlerM",
-    "wayland.MinecraftMixin",
 
     "compatibility.PostPassM",
 

@@ -143,7 +143,7 @@ public class RenderRegion implements BlockAndTintGetter {
 
     @Override
     public CardinalLighting cardinalLighting() {
-        return this.level.cardinalLighting();
+        return this.level instanceof net.minecraft.client.multiplayer.ClientLevel clientLevel ? clientLevel.cardinalLighting() : CardinalLighting.DEFAULT;
     }
 
     public LevelLightEngine getLightEngine() {

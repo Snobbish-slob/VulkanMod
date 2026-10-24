@@ -9,8 +9,6 @@ import java.util.Locale;
 import java.util.Set;
 
 import static java.util.stream.Collectors.toSet;
-import static org.lwjgl.glfw.GLFW.GLFW_PLATFORM_WIN32;
-import static org.lwjgl.glfw.GLFW.glfwGetPlatform;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK11.*;
@@ -186,7 +184,7 @@ public class Device {
     // Won't Work with older Drivers (15.45 And.or older)
     // May not work as this uses Guess work+Assumptions
     private static String decIntelVersion(int v) {
-        return (glfwGetPlatform() == GLFW_PLATFORM_WIN32) ? (v >>> 14) + "." + (v & 0x3fff) : decDefVersion(v);
+        return org.apache.commons.lang3.SystemUtils.IS_OS_WINDOWS ? (v >>> 14) + "." + (v & 0x3fff) : decDefVersion(v);
     }
 
 

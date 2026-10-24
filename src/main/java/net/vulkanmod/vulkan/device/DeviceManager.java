@@ -18,7 +18,7 @@ import java.util.Set;
 import static java.util.stream.Collectors.toSet;
 import static net.vulkanmod.vulkan.queue.Queue.findQueueFamilies;
 import static net.vulkanmod.vulkan.util.VUtil.asPointerBuffer;
-import static org.lwjgl.glfw.GLFWVulkan.glfwGetRequiredInstanceExtensions;
+import org.lwjgl.sdl.SDLVulkan;
 import static org.lwjgl.system.MemoryStack.stackGet;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.EXTDebugUtils.VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -259,7 +259,7 @@ public abstract class DeviceManager {
     }
 
     private static PointerBuffer getRequiredExtensions() {
-        PointerBuffer glfwExtensions = glfwGetRequiredInstanceExtensions();
+        PointerBuffer glfwExtensions = SDLVulkan.SDL_Vulkan_GetInstanceExtensions();
 
         if (Vulkan.ENABLE_VALIDATION_LAYERS) {
             MemoryStack stack = stackGet();

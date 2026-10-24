@@ -32,8 +32,8 @@ import java.util.stream.Collectors;
 import static java.util.stream.Collectors.toSet;
 import static net.vulkanmod.vulkan.queue.Queue.getQueueFamilies;
 import static net.vulkanmod.vulkan.util.VUtil.asPointerBuffer;
-import static org.lwjgl.glfw.GLFWVulkan.glfwCreateWindowSurface;
-import static org.lwjgl.glfw.GLFWVulkan.glfwGetRequiredInstanceExtensions;
+import org.lwjgl.sdl.SDLError;
+import org.lwjgl.sdl.SDLVulkan;
 import static org.lwjgl.system.MemoryStack.*;
 import static org.lwjgl.system.MemoryUtil.NULL;
 import static org.lwjgl.util.vma.Vma.vmaCreateAllocator;
@@ -106,8 +106,9 @@ public class Vulkan {
         try (MemoryStack stack = stackPush()) {
             LongBuffer pSurface = stack.longs(VK_NULL_HANDLE);
 
-            checkResult(glfwCreateWindowSurface(Instance.instance, window, null, pSurface),
-                        "Failed to create window surface");
+            if (!SDLVulkan.SDL_Vulkan_CreateSurface(window, Instance.instance, null, pSurface)) {
+                throw new RuntimeException("Failed to create window surface: " + SDLError.SDL_GetError());
+            }
 
             surface = pSurface.get(0);
         }
@@ -292,7 +293,10 @@ public class Vulkan {
         }
 
         private static PointerBuffer getRequiredInstanceExtensions() {
-            PointerBuffer glfwExtensions = glfwGetRequiredInstanceExtensions();
+            PointerBuffer glfwExtensions = SDLVulkan.SDL_Vulkan_GetInstanceExtensions();
+            if (glfwExtensions == null) {
+                throw new RuntimeException("Failed to find the SDL platform surface extensions: " + SDLError.SDL_GetError());
+            }
 
             List<String> otherExtensions = new ArrayList<>();
             if (Util.getPlatform() == Util.OS.OSX && instanceExtensions.contains(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)) {
@@ -307,6 +311,11 @@ public class Vulkan {
             if (ENABLE_VALIDATION_LAYERS || renderdocAttached) {
                 otherExtensions.add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
                 Debug.useDebugLabels = true;
+            }
+
+            // SDL may already request some of these (e.g. portability enumeration on macOS)
+            for (int i = 0; i < glfwExtensions.capacity(); i++) {
+                otherExtensions.remove(org.lwjgl.system.MemoryUtil.memUTF8(glfwExtensions.get(i)));
             }
 
             if (!otherExtensions.isEmpty()) {

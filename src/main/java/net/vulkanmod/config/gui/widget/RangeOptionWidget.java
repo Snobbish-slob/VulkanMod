@@ -9,7 +9,7 @@ import net.minecraft.util.Mth;
 import net.vulkanmod.config.gui.render.GuiRenderer;
 import net.vulkanmod.config.option.RangeOption;
 import net.vulkanmod.vulkan.util.ColorUtil;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 public class RangeOptionWidget extends OptionWidget<RangeOption> {
     private boolean focused;
@@ -61,8 +61,8 @@ public class RangeOptionWidget extends OptionWidget<RangeOption> {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        boolean isLeft = event.key() == GLFW.GLFW_KEY_LEFT;
-        boolean isRight = event.key() == GLFW.GLFW_KEY_RIGHT;
+        boolean isLeft = event.key() == InputConstants.KEY_LEFT;
+        boolean isRight = event.key() == InputConstants.KEY_RIGHT;
 
         if (isLeft || isRight) {
             float direction = isLeft ? -1.0f : 1.0f;
