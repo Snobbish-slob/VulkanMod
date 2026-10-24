@@ -4,6 +4,7 @@ import net.minecraft.client.renderer.culling.Frustum;
 import net.vulkanmod.interfaces.FrustumMixed;
 import net.vulkanmod.render.chunk.frustum.VFrustum;
 import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -25,7 +26,7 @@ public class FrustumMixin implements FrustumMixed {
     @Unique private final VFrustum vFrustum = new VFrustum();
 
     @Inject(method = "calculateFrustum", at = @At("HEAD"))
-    private void calculateFrustum(Matrix4f modelView, Matrix4f projection, CallbackInfo ci) {
+    private void calculateFrustum(Matrix4fc modelView, Matrix4f projection, CallbackInfo ci) {
         this.vFrustum.calculateFrustum(modelView, projection);
         this.viewVector = this.matrix.transformTranspose(new Vector4f(0.0F, 0.0F, 1.0F, 0.0F));
     }

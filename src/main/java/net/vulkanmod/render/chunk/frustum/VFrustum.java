@@ -3,6 +3,7 @@ package net.vulkanmod.render.chunk.frustum;
 import net.minecraft.world.phys.AABB;
 import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import org.joml.Vector4f;
 
 public class VFrustum {
@@ -37,7 +38,7 @@ public class VFrustum {
         this.camZ = camZ;
     }
 
-    public void calculateFrustum(Matrix4f modelViewMatrix, Matrix4f projMatrix) {
+    public void calculateFrustum(Matrix4fc modelViewMatrix, Matrix4f projMatrix) {
         projMatrix.mul(modelViewMatrix, this.matrix);
 
         this.frustum.set(this.matrix, false);
