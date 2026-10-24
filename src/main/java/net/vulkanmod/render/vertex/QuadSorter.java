@@ -1,5 +1,6 @@
 package net.vulkanmod.render.vertex;
 
+import com.mojang.renderpearl.api.pipeline.IndexType;
 import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.vulkanmod.render.util.SortUtil;
 import org.joml.Vector3f;
@@ -90,7 +91,7 @@ public class QuadSorter {
         this.sortingPointsIndices = new int[pointCount];
     }
 
-    public void putSortedQuadIndices(TerrainBufferBuilder bufferBuilder, VertexFormat.IndexType indexType) {
+    public void putSortedQuadIndices(TerrainBufferBuilder bufferBuilder, IndexType indexType) {
         float[] distances = this.distances;
         int[] sortingPointsIndices = this.sortingPointsIndices;
 
@@ -122,7 +123,7 @@ public class QuadSorter {
         }
     }
 
-    public void putSortedQuadIndices(TerrainBuilder bufferBuilder, VertexFormat.IndexType indexType) {
+    public void putSortedQuadIndices(TerrainBuilder bufferBuilder, IndexType indexType) {
         float[] distances = new float[this.sortingPoints.length];
         int[] sortingPoints = new int[this.sortingPoints.length];
 

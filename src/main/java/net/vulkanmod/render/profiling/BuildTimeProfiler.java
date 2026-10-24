@@ -24,7 +24,7 @@ public abstract class BuildTimeProfiler {
 
     public static void startBench() {
         bench = true;
-        Minecraft.getInstance().levelRenderer.allChanged();
+        Minecraft.getInstance().levelExtractor.allChanged();
     }
 
     public static float getDeltaTime() {

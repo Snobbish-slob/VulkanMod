@@ -12,7 +12,7 @@ import net.vulkanmod.render.engine.VkGpuTexture;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.*;
 
-import java.util.OptionalInt;
+import java.util.Optional;
 
 @Mixin(RenderTarget.class)
 public abstract class RenderTargetMixin {
@@ -25,7 +25,7 @@ public abstract class RenderTargetMixin {
     @Shadow @Nullable protected GpuTextureView colorTextureView;
 
     @Overwrite
-    public void blitAndBlendToTexture(GpuTextureView gpuTextureView) {
+    public void blitAndBlendToTexture(GpuTextureView gpuTextureView, GpuTextureView outputDepth) {
         RenderSystem.assertOnRenderThread();
 
         VkFbo fbo = ((VkGpuTexture) this.colorTexture).getFbo(this.depthTexture);
@@ -35,11 +35,11 @@ public abstract class RenderTargetMixin {
 
         try (RenderPass renderPass = RenderSystem.getDevice()
                                                  .createCommandEncoder()
-                                                 .createRenderPass(() -> "Blit render target", gpuTextureView, OptionalInt.empty())) {
-            renderPass.setPipeline(RenderPipelines.ENTITY_OUTLINE_BLIT);
+                                                 .createRenderPass(() -> "Blit render target", gpuTextureView, Optional.empty())) {
+            renderPass.setPipeline(RenderSystem.getCompiledPipeline(RenderPipelines.ENTITY_OUTLINE_BLIT));
             RenderSystem.bindDefaultUniforms(renderPass);
-            renderPass.bindTexture("InSampler", this.colorTextureView, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
-            renderPass.draw(0, 3);
+            renderPass.setUniform("InSampler", this.colorTextureView, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
+            renderPass.draw(3, 1, 0, 0);
         }
     }
 

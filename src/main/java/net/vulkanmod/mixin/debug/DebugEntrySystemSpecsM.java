@@ -1,8 +1,7 @@
 package net.vulkanmod.mixin.debug;
 
-import com.mojang.blaze3d.platform.GLX;
-import com.mojang.renderpearl.api.device.GpuDevice;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.device.DeviceInfo;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.debug.DebugEntrySystemSpecs;
 import net.minecraft.client.gui.components.debug.DebugScreenDisplayer;
@@ -22,28 +21,25 @@ import java.util.Locale;
 
 @Mixin(DebugEntrySystemSpecs.class)
 public class DebugEntrySystemSpecsM {
-
     @Shadow @Final private static Identifier GROUP;
 
     @Inject(method = "display", at = @At("HEAD"), cancellable = true)
     private void display(DebugScreenDisplayer debugScreenDisplayer, Level level, LevelChunk levelChunk,
                         LevelChunk levelChunk2, CallbackInfo ci) {
-        GpuDevice gpuDevice = RenderSystem.getDevice();
+        DeviceInfo deviceInfo = RenderSystem.getDevice().getDeviceInfo();
         debugScreenDisplayer.addToGroup(
                 GROUP,
                 List.of(
                         String.format(Locale.ROOT, "Java: %s", System.getProperty("java.version")),
-                        String.format(Locale.ROOT, "CPU: %s", GLX._getCpuInfo()),
+                        String.format(Locale.ROOT, "CPU: %s", DebugEntrySystemSpecs.getCpuInfo()),
                         String.format(
-                                Locale.ROOT, "Display: %dx%d (%s)", Minecraft.getInstance().getWindow().getWidth(), Minecraft.getInstance().getWindow().getHeight(), gpuDevice.getVendor()
+                                Locale.ROOT, "Display: %dx%d (%s)", Minecraft.getInstance().getWindow().getWidth(), Minecraft.getInstance().getWindow().getHeight(), deviceInfo.vendorName()
                         ),
-                        gpuDevice.getRenderer(),
-                        String.format(Locale.ROOT, "%s %s", gpuDevice.getBackendName(), gpuDevice.getVersion()),
+                        deviceInfo.name(),
+                        String.format(Locale.ROOT, "%s %s", deviceInfo.backendName(), deviceInfo.driverInfo()),
                         String.format(Locale.ROOT, "VulkanMod %s", Initializer.getVersion())
                 )
         );
-
         ci.cancel();
     }
-
 }

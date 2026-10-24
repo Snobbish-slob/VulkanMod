@@ -1,5 +1,6 @@
 package net.vulkanmod.vulkan;
 
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.vulkanmod.render.engine.VkGpuBuffer;
 import net.vulkanmod.vulkan.memory.*;
@@ -95,11 +96,11 @@ public class Drawer {
         this.uniformBuffers[currentFrame].reset();
     }
 
-    public void draw(ByteBuffer vertexData, VertexFormat.Mode mode, VertexFormat vertexFormat, int vertexCount) {
+    public void draw(ByteBuffer vertexData, PrimitiveTopology mode, VertexFormat vertexFormat, int vertexCount) {
         draw(vertexData, null, mode, vertexFormat, vertexCount);
     }
 
-    public void draw(ByteBuffer vertexData, ByteBuffer indexData, VertexFormat.Mode mode, VertexFormat vertexFormat, int vertexCount) {
+    public void draw(ByteBuffer vertexData, ByteBuffer indexData, PrimitiveTopology mode, VertexFormat vertexFormat, int vertexCount) {
         VertexBuffer vertexBuffer = this.vertexBuffers[this.currentFrame];
         int size = vertexFormat.getVertexSize() * vertexCount;
         vertexBuffer.copyBuffer(vertexData, size);
@@ -201,7 +202,7 @@ public class Drawer {
         return this.uniformBuffers[this.currentFrame];
     }
 
-    public AutoIndexBuffer getAutoIndexBuffer(VertexFormat.Mode mode, int vertexCount) {
+    public AutoIndexBuffer getAutoIndexBuffer(PrimitiveTopology mode, int vertexCount) {
         return switch (mode) {
             case QUADS -> {
                 int indexCount = vertexCount * 3 / 2;

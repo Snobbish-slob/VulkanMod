@@ -1,5 +1,6 @@
 package net.vulkanmod.render.engine;
 
+import com.mojang.renderpearl.api.pipeline.IndexType;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
@@ -32,7 +33,7 @@ public class VkRenderPass implements RenderPass {
     protected final GpuBuffer[] vertexBuffers = new GpuBuffer[1];
     @Nullable
     protected GpuBuffer indexBuffer;
-    protected VertexFormat.IndexType indexType = VertexFormat.IndexType.INT;
+    protected IndexType indexType = IndexType.INT;
     private final ScissorState scissorState = new ScissorState();
     protected final HashMap<String, GpuBufferSlice> uniforms = new HashMap<>();
     protected final HashMap<String, TextureViewAndSampler> samplers = new HashMap<>();
@@ -158,7 +159,7 @@ public class VkRenderPass implements RenderPass {
     }
 
     @Override
-    public void setIndexBuffer(@Nullable GpuBuffer gpuBuffer, VertexFormat.IndexType indexType) {
+    public void setIndexBuffer(@Nullable GpuBuffer gpuBuffer, IndexType indexType) {
         this.indexBuffer = gpuBuffer;
         this.indexType = indexType;
     }
@@ -176,7 +177,7 @@ public class VkRenderPass implements RenderPass {
     public <T> void drawMultipleIndexed(
             Collection<RenderPass.Draw<T>> collection,
             @Nullable GpuBuffer gpuBuffer,
-            @Nullable VertexFormat.IndexType indexType,
+            @Nullable IndexType indexType,
             Collection<String> collection2,
             T object
     ) {

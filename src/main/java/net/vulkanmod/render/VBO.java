@@ -1,5 +1,6 @@
 package net.vulkanmod.render;
 
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.vulkanmod.vulkan.Renderer;
@@ -18,7 +19,7 @@ public class VBO {
     private VertexBuffer vertexBuffer;
     private IndexBuffer indexBuffer;
 
-    private VertexFormat.Mode mode;
+    private PrimitiveTopology mode;
     private boolean autoIndexed = false;
     private int indexCount;
     private int vertexCount;
@@ -32,7 +33,7 @@ public class VBO {
 
         this.indexCount = parameters.indexCount();
         this.vertexCount = parameters.vertexCount();
-        this.mode = parameters.mode();
+        this.mode = parameters.primitiveTopology();
 
         this.uploadVertexBuffer(parameters, meshData.vertexBuffer());
         this.uploadIndexBuffer(meshData.indexBuffer());
@@ -161,7 +162,7 @@ public class VBO {
         return autoIndexed;
     }
 
-    public VertexFormat.Mode getMode() {
+    public PrimitiveTopology getMode() {
         return mode;
     }
 

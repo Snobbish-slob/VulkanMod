@@ -1,11 +1,12 @@
 package net.vulkanmod.mixin.profiling;
 
+import com.llamalad7.mixinextras.sugar.Local;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.DebugScreenOverlay;
-import net.minecraft.client.renderer.entity.ItemRenderer;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.Hud;
+import net.minecraft.client.renderer.state.gui.GuiRenderState;
 import net.vulkanmod.render.profiling.ProfilerOverlay;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -16,17 +17,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Gui.class)
 public class GuiMixin {
-
-    @Shadow @Final private DebugScreenOverlay debugOverlay;
+    @Shadow @Final private Minecraft minecraft;
 
     @Inject(method = "<init>", at = @At("RETURN"))
-    private void createProfilerOverlay(Minecraft minecraft, CallbackInfo ci) {
+    private void createProfilerOverlay(Minecraft minecraft, Hud hud, GuiRenderState guiRenderState, CallbackInfo ci) {
         ProfilerOverlay.createInstance(minecraft);
     }
 
-    @Inject(method = "render", at = @At(value = "RETURN"))
-    private void renderProfilerOverlay(GuiGraphics guiGraphics, DeltaTracker deltaTracker, CallbackInfo ci) {
-        if (ProfilerOverlay.shouldRender && !this.debugOverlay.showDebugScreen())
-            ProfilerOverlay.INSTANCE.render(guiGraphics);
+    @Inject(method = "extractRenderState", at = @At(value = "RETURN"))
+    private void renderProfilerOverlay(DeltaTracker deltaTracker, boolean shouldRenderLevel, boolean resourcesLoaded, CallbackInfo ci,
+                                       @Local GuiGraphicsExtractor graphics) {
+        if (ProfilerOverlay.shouldRender && !this.minecraft.getDebugOverlay().showDebugScreen())
+            ProfilerOverlay.INSTANCE.render(graphics);
     }
 }

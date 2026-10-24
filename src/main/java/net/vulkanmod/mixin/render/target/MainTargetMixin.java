@@ -13,8 +13,8 @@ import org.spongepowered.asm.mixin.Overwrite;
 @Mixin(MainTarget.class)
 public class MainTargetMixin extends RenderTarget {
 
-    public MainTargetMixin(boolean useDepth) {
-        super("Main", useDepth);
+    public MainTargetMixin(String label, GpuFormat colorFormat, GpuFormat depthFormat) {
+        super(label, colorFormat, depthFormat);
     }
 
     /**
@@ -31,16 +31,16 @@ public class MainTargetMixin extends RenderTarget {
     public void createBuffers(int i, int j) {
         RenderSystem.assertOnRenderThread();
         GpuDevice gpuDevice = RenderSystem.getDevice();
-        int k = gpuDevice.getMaxTextureSize();
+        int k = gpuDevice.getDeviceInfo().limits().maxTextureSize();
         if (i > 0 && i <= k && j > 0 && j <= k) {
             this.width = i;
             this.height = j;
-            if (this.useDepth) {
-                this.depthTexture = gpuDevice.createTexture(() -> this.label + " / Depth", 15, TextureFormat.DEPTH32, i, j, 1, 1);
+            if (this.depthFormat != null) {
+                this.depthTexture = gpuDevice.createTexture(() -> this.label + " / Depth", 15, this.depthFormat, i, j, 1, 1);
                 this.depthTextureView = gpuDevice.createTextureView(this.depthTexture);
             }
 
-            this.colorTexture = gpuDevice.createTexture(() -> this.label + " / Color", 15, TextureFormat.RGBA8, i, j, 1, 1);
+            this.colorTexture = gpuDevice.createTexture(() -> this.label + " / Color", 15, this.colorFormat, i, j, 1, 1);
             this.colorTextureView = gpuDevice.createTextureView(this.colorTexture);
         } else {
             throw new IllegalArgumentException("Window " + i + "x" + j + " size out of bounds (max. size: " + k + ")");

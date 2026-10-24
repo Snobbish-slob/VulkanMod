@@ -17,7 +17,7 @@ import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
 import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
-import net.minecraft.client.renderer.state.LevelRenderState;
+import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureManager;
@@ -329,9 +329,9 @@ public class WorldRenderer {
         final boolean indirectDraw = Initializer.CONFIG.indirectDraw;
 
         if (!isTranslucent) {
-            GlStateManager._disableBlend();
+            VRenderSystem.disableBlend();
         } else {
-            GlStateManager._enableBlend();
+            VRenderSystem.enableBlend();
             VRenderSystem.glBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
         }
 
@@ -341,7 +341,7 @@ public class WorldRenderer {
         GlStateManager._enableDepthTest();
         GlStateManager._depthMask(true);
 
-        GlStateManager._colorMask(true, true, true, true);
+        VRenderSystem.colorMask(true, true, true, true);
         GlStateManager._disablePolygonOffset();
         VRenderSystem.setPolygonModeGL(GL11.GL_FILL);
 
@@ -368,7 +368,7 @@ public class WorldRenderer {
         texture.getVulkanImage().setSampler(this.terrainSampler);
 
         VRenderSystem.setShaderTexture(0, texView);
-        VRenderSystem.setShaderTexture(2, Minecraft.getInstance().gameRenderer.lightTexture().getTextureView());
+        VRenderSystem.setShaderTexture(2, Minecraft.getInstance().gameRenderer.lightmap());
 
         VTextureSelector.bindShaderTextures(pipeline);
 
@@ -490,7 +490,7 @@ public class WorldRenderer {
                         crumblingOverlay = null;
                     }
 
-                    BlockEntityRenderState blockEntityRenderState = this.blockEntityRenderDispatcher.tryExtractRenderState(blockEntity, this.partialTick, crumblingOverlay);
+                    BlockEntityRenderState blockEntityRenderState = this.blockEntityRenderDispatcher.tryExtractRenderState(blockEntity, this.partialTick, crumblingOverlay, false);
                     if (blockEntityRenderState != null) {
                         levelRenderState.blockEntityRenderStates.add(blockEntityRenderState);
                     }
@@ -505,7 +505,7 @@ public class WorldRenderer {
             if (blockEntity2.isRemoved()) {
                 iterator.remove();
             } else {
-                BlockEntityRenderState blockEntityRenderState2 = this.blockEntityRenderDispatcher.tryExtractRenderState(blockEntity2, this.partialTick, null);
+                BlockEntityRenderState blockEntityRenderState2 = this.blockEntityRenderDispatcher.tryExtractRenderState(blockEntity2, this.partialTick, null, true);
                 if (blockEntityRenderState2 != null) {
                     levelRenderState.blockEntityRenderStates.add(blockEntityRenderState2);
                 }

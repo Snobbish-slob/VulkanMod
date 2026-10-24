@@ -16,11 +16,11 @@
 
 package net.vulkanmod.render.chunk.build.frapi.mesh;
 
+import net.minecraft.util.LightCoordsUtil;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.*;
 import net.fabricmc.fabric.api.util.TriState;
 import net.minecraft.client.model.geom.builders.UVPair;
-import net.minecraft.client.renderer.Lightmap;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
@@ -248,8 +248,8 @@ public abstract class MutableQuadViewImpl extends QuadViewImpl implements QuadEm
 		uv(2, UVPair.unpackU(packedUV2), UVPair.unpackV(packedUV2));
 		uv(3, UVPair.unpackU(packedUV3), UVPair.unpackV(packedUV3));
 
-		int lightEmission = quad.lightEmission();
-		int lightmap = LightTexture.pack(lightEmission, lightEmission);
+		int lightEmission = quad.materialInfo().lightEmission();
+		int lightmap = LightCoordsUtil.pack(lightEmission, lightEmission);
 		lightmap(lightmap, lightmap, lightmap, lightmap);
 
 		normalFlags(0);

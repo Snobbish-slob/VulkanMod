@@ -1,12 +1,13 @@
 package net.vulkanmod.vulkan.util;
 
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.renderpearl.api.commands.CommandEncoder;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.textures.GpuTexture;
-import com.mojang.blaze3d.textures.TextureFormat;
 import net.minecraft.util.ARGB;
 import net.vulkanmod.render.engine.VkGpuTexture;
 import net.vulkanmod.vulkan.Renderer;
@@ -24,15 +25,14 @@ public abstract class ScreenshotUtil {
             throw new IllegalStateException("Tried to capture screenshot of an incomplete framebuffer");
         }
 
-        int pixelSize = TextureFormat.RGBA8.pixelSize();
+        int pixelSize = GpuFormat.RGBA8_UNORM.blockSize();
         GpuBuffer gpuBuffer = RenderSystem.getDevice().createBuffer(
                 () -> "Screenshot buffer",
                 GpuBuffer.USAGE_COPY_DST | GpuBuffer.USAGE_MAP_READ,
                 width * height * pixelSize);
 
-        CommandEncoder commandEncoder = RenderSystem.getDevice().createCommandEncoder();
         RenderSystem.getDevice().createCommandEncoder().copyTextureToBuffer(gpuTexture, gpuBuffer, 0, () -> {
-            try (GpuBuffer.MappedView readView = commandEncoder.mapBuffer(gpuBuffer, true, false)) {
+            try (GpuBufferSlice.MappedView readView = gpuBuffer.map(true, false)) {
                 NativeImage nativeImage = new NativeImage(width, height, false);
 
                 var colorAttachment = ((VkGpuTexture) Renderer.getInstance()

@@ -1,9 +1,13 @@
 package net.vulkanmod.render.sky;
 
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.renderpearl.backend.opengl.GlStateManager;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.*;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.MeshData;
 import net.minecraft.client.CloudStatus;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
@@ -23,6 +27,7 @@ import org.lwjgl.opengl.GL11;
 import java.io.IOException;
 
 public class CloudRenderer {
+    private final ByteBufferBuilder byteBufferBuilder = new ByteBufferBuilder(786432);
     private static final Identifier TEXTURE_LOCATION = Identifier.withDefaultNamespace("textures/environment/clouds.png");
 
     private static final int DIR_NEG_Y_BIT = 1 << 0;
@@ -82,12 +87,12 @@ public class CloudRenderer {
         }
 
         if (centerCellX != this.prevCloudX || centerCellZ != this.prevCloudZ
-                || (minecraft.options.getCloudsType() != this.prevCloudsType)
+                || (minecraft.options.cloudStatus().get() != this.prevCloudsType)
                 || (this.prevCloudY != yState)
                 || this.cloudBuffer == null) {
             this.prevCloudX = centerCellX;
             this.prevCloudZ = centerCellZ;
-            this.prevCloudsType = minecraft.options.getCloudsType();
+            this.prevCloudsType = minecraft.options.cloudStatus().get();
             this.prevCloudY = yState;
             this.generateClouds = true;
         }
@@ -100,7 +105,7 @@ public class CloudRenderer {
 
             this.resetBuffer();
 
-            MeshData cloudsMesh = this.buildClouds(Tesselator.getInstance(), centerCellX, centerCellZ, centerY);
+            MeshData cloudsMesh = this.buildClouds(centerCellX, centerCellZ, centerY);
 
             if (cloudsMesh == null) {
                 return;
@@ -140,7 +145,7 @@ public class CloudRenderer {
         VRenderSystem.glDepthFun(GL11.GL_LEQUAL);
         GlStateManager._enableDepthTest();
         GlStateManager._depthMask(true);
-        GlStateManager._colorMask(true, true, true, true);
+        VRenderSystem.colorMask(true, true, true, true);
         GlStateManager._disablePolygonOffset();
         VRenderSystem.setPolygonModeGL(GL11.GL_FILL);
         VRenderSystem.setPrimitiveTopologyGL(GL11.GL_TRIANGLES);
@@ -180,13 +185,13 @@ public class CloudRenderer {
         }
     }
 
-    private MeshData buildClouds(Tesselator tesselator, int centerCellX, int centerCellZ, double cloudY) {
+    private MeshData buildClouds(int centerCellX, int centerCellZ, double cloudY) {
         final float upFaceBrightness = 1.0f;
         final float xDirBrightness = 0.9f;
         final float downFaceBrightness = 0.7f;
         final float zDirBrightness = 0.8f;
 
-        BufferBuilder bufferBuilder = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        BufferBuilder bufferBuilder = new BufferBuilder(this.byteBufferBuilder, PrimitiveTopology.QUADS, DefaultVertexFormat.POSITION_COLOR);
 
         int cloudRange = Math.min(Minecraft.getInstance().options.cloudRange().get(), 128) * 16;
         int renderDistance = Mth.ceil(cloudRange / 12.0F);

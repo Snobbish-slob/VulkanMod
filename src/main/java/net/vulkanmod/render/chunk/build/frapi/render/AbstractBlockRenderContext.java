@@ -1,5 +1,6 @@
 package net.vulkanmod.render.chunk.build.frapi.render;
 
+import net.minecraft.util.LightCoordsUtil;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.objects.Object2ByteLinkedOpenHashMap;
 import net.fabricmc.fabric.api.client.renderer.v1.Renderer;
@@ -28,7 +29,6 @@ import org.jetbrains.annotations.Nullable;
 import net.vulkanmod.render.chunk.build.frapi.helper.ColorHelper;
 import net.vulkanmod.render.chunk.build.frapi.mesh.EncodingFormat;
 import net.vulkanmod.render.chunk.build.frapi.mesh.MutableQuadViewImpl;
-import net.minecraft.client.renderer.Lightmap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
@@ -102,7 +102,7 @@ public abstract class AbstractBlockRenderContext extends AbstractRenderContext {
 		this.blockState = blockState;
 		this.defaultLayer = ItemBlockRenderTypes.getChunkRenderType(blockState);
 
-		this.useAO = Minecraft.useAmbientOcclusion();
+		this.useAO = Minecraft.getInstance().options.ambientOcclusion().get();
 		this.defaultAO = this.useAO && modelAo && blockState.getLightEmission() == 0;
 
 		this.cullCompletionFlags = 0;
@@ -230,8 +230,8 @@ public abstract class AbstractBlockRenderContext extends AbstractRenderContext {
 		if (emissive) {
 			for (int i = 0; i < 4; i++) {
 				quad.color(i, ColorHelper.multiplyRGB(quad.color(i), data.br[i]));
-//				quad.lightmap(i, LightTexture.FULL_BRIGHT);
-				data.lm[i] = LightTexture.FULL_BRIGHT;
+//				quad.lightmap(i, LightCoordsUtil.FULL_BRIGHT);
+				data.lm[i] = LightCoordsUtil.FULL_BRIGHT;
 			}
 		} else {
 			for (int i = 0; i < 4; i++) {

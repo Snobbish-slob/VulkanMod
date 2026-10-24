@@ -1,5 +1,7 @@
 package net.vulkanmod.render.engine;
 
+import com.mojang.renderpearl.api.pipeline.IndexType;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.renderpearl.api.commands.GpuFence;
@@ -670,19 +672,19 @@ public class VkCommandEncoder implements CommandEncoder {
             VkRenderPass renderPass,
             Collection<RenderPass.Draw<T>> collection,
             @Nullable GpuBuffer indexBuffer,
-            @Nullable VertexFormat.IndexType indexType,
+            @Nullable IndexType indexType,
             Collection<String> collection2,
             T object
     ) {
         if (this.trySetup(renderPass)) {
             if (indexType == null) {
-                indexType = VertexFormat.IndexType.SHORT;
+                indexType = IndexType.SHORT;
             }
 
             Pipeline pipeline = ExtendedRenderPipeline.of(renderPass.getPipeline()).getPipeline();
 
             for (RenderPass.Draw draw : collection) {
-                VertexFormat.IndexType indexType2 = draw.indexType() == null ? indexType : draw.indexType();
+                IndexType indexType2 = draw.indexType() == null ? indexType : draw.indexType();
                 renderPass.setIndexBuffer(draw.indexBuffer() == null ? indexBuffer : draw.indexBuffer(), indexType2);
                 renderPass.setVertexBuffer(draw.slot(), draw.vertexBuffer());
 
@@ -733,7 +735,7 @@ public class VkCommandEncoder implements CommandEncoder {
         }
     }
 
-    protected void executeDraw(VkRenderPass renderPass, int vertexOffset, int firstIndex, int vertexCount, @Nullable VertexFormat.IndexType indexType, int instanceCount) {
+    protected void executeDraw(VkRenderPass renderPass, int vertexOffset, int firstIndex, int vertexCount, @Nullable IndexType indexType, int instanceCount) {
         if (this.trySetup(renderPass)) {
             if (GlRenderPass.VALIDATION) {
                 if (indexType != null) {
@@ -760,7 +762,7 @@ public class VkCommandEncoder implements CommandEncoder {
     }
 
     public void drawFromBuffers(VkRenderPass renderPass, int vertexOffset, int firstIndex, int vertexCount,
-                                @Nullable VertexFormat.IndexType indexType, RenderPipeline renderPipeline, int instanceCount)
+                                @Nullable IndexType indexType, RenderPipeline renderPipeline, int instanceCount)
     {
         if (instanceCount < 1) {
             instanceCount = 1;

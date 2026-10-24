@@ -21,8 +21,8 @@ public class PictureInPictureRendererM<T extends PictureInPictureRenderState> {
     private @Nullable GpuTextureView textureView;
 
     @Overwrite
-    public void blitTexture(T pictureInPictureRenderState, GuiRenderState guiRenderState) {
-        guiRenderState.submitBlitToCurrentLayer(
+    protected void blitTexture(T pictureInPictureRenderState, GuiRenderState guiRenderState) {
+        guiRenderState.addBlitToCurrentLayer(
                 new BlitRenderState(
                         RenderPipelines.GUI_TEXTURED_PREMULTIPLIED_ALPHA,
                         TextureSetup.singleTexture(this.textureView, RenderSystem.getSamplerCache().getRepeat(FilterMode.NEAREST)),

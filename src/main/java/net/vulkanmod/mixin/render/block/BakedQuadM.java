@@ -2,7 +2,6 @@ package net.vulkanmod.mixin.render.block;
 
 import net.minecraft.client.model.geom.builders.UVPair;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.Direction;
 import net.vulkanmod.render.chunk.build.frapi.helper.NormalHelper;
 import net.vulkanmod.render.chunk.cull.QuadFacing;
@@ -21,8 +20,8 @@ import static net.vulkanmod.render.model.quad.ModelQuad.VERTEX_SIZE;
 @Mixin(BakedQuad.class)
 public abstract class BakedQuadM implements ModelQuadView {
 
-    @Shadow @Final protected Direction direction;
-    @Shadow @Final protected int tintIndex;
+    @Shadow @Final private Direction direction;
+    @Shadow @Final private BakedQuad.MaterialInfo materialInfo;
 
     @Shadow
     public abstract Vector3fc position(int i);
@@ -39,8 +38,7 @@ public abstract class BakedQuadM implements ModelQuadView {
                         Vector3fc position2, Vector3fc position3,
                         long packedUV0, long packedUV1,
                         long packedUV2, long packedUV3,
-                        int tintIndex, Direction direction,
-                        TextureAtlasSprite sprite, boolean shade, int lightEmission,
+                        Direction direction, BakedQuad.MaterialInfo materialInfo,
                         CallbackInfo ci) {
         this.flags = ModelQuadFlags.getQuadFlags(this, direction);
 
@@ -86,7 +84,7 @@ public abstract class BakedQuadM implements ModelQuadView {
 
     @Override
     public int getColorIndex() {
-        return this.tintIndex;
+        return this.materialInfo.tintIndex();
     }
 
     @Override
@@ -111,7 +109,7 @@ public abstract class BakedQuadM implements ModelQuadView {
 
     @Override
     public boolean isTinted() {
-        return this.tintIndex != -1;
+        return this.materialInfo.tintIndex() != -1;
     }
 
     private static int vertexOffset(int vertexIndex) {

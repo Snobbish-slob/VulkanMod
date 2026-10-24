@@ -1,5 +1,6 @@
 package net.vulkanmod.render.chunk.build.frapi.render;
-/*
+
+import net.minecraft.util.LightCoordsUtil;/*
  * Copyright (c) 2016, 2017, 2018, 2019 FabricMC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +20,6 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.fabricmc.fabric.api.client.renderer.v1.render.BlockVertexConsumerProvider;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
-import net.minecraft.client.renderer.Lightmap;
 import net.minecraft.client.renderer.block.model.BlockStateModel;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.core.BlockPos;
@@ -82,7 +82,7 @@ public class SimpleBlockRenderContext extends AbstractRenderContext {
     private void shadeQuad(MutableQuadViewImpl quad, boolean emissive) {
         if (emissive) {
             for (int i = 0; i < 4; i++) {
-                quad.lightmap(i, LightTexture.FULL_BRIGHT);
+                quad.lightmap(i, LightCoordsUtil.FULL_BRIGHT);
             }
         } else {
             final int light = this.light;

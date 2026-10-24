@@ -1,5 +1,6 @@
 package net.vulkanmod.render.vertex;
 
+import com.mojang.renderpearl.api.pipeline.IndexType;
 import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.minecraft.world.level.block.state.BlockState;
 import net.vulkanmod.Initializer;
@@ -113,7 +114,7 @@ public class TerrainBuilder {
 
         int indexCount = vertexCount / 4 * 6;
 
-        VertexFormat.IndexType indexType = VertexFormat.IndexType.least(indexCount);
+        IndexType indexType = IndexType.least(indexCount);
         boolean sequentialIndexing;
 
         // TODO sorting
@@ -170,7 +171,7 @@ public class TerrainBuilder {
     public void setBlockAttributes(BlockState blockState) {
     }
 
-    public record DrawState(int vertexSize, int indexCount, VertexFormat.IndexType indexType,
+    public record DrawState(int vertexSize, int indexCount, IndexType indexType,
                             boolean indexOnly, boolean sequentialIndex) {
 
         private int indexBufferSize() {
@@ -181,7 +182,7 @@ public class TerrainBuilder {
             return this.indexCount;
         }
 
-        public VertexFormat.IndexType indexType() {
+        public IndexType indexType() {
             return this.indexType;
         }
 

@@ -1,6 +1,6 @@
 package net.vulkanmod.render.chunk.build.light.smooth;
 
-import net.minecraft.client.renderer.Lightmap;
+import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.core.BlockPos;
 import net.vulkanmod.render.chunk.util.SimpleDirection;
 import net.vulkanmod.render.chunk.build.light.data.LightDataAccess;
@@ -225,16 +225,16 @@ class AoFaceData {
         // FIX: Apply the fullbright lightmap from emissive blocks at the very end so it cannot influence
         // the minimum lightmap and produce incorrect results (for example, sculk sensors in a dark room)
         if (aem) {
-            a = LightTexture.FULL_BRIGHT;
+            a = LightCoordsUtil.FULL_BRIGHT;
         }
         if (bem) {
-            b = LightTexture.FULL_BRIGHT;
+            b = LightCoordsUtil.FULL_BRIGHT;
         }
         if (cem) {
-            c = LightTexture.FULL_BRIGHT;
+            c = LightCoordsUtil.FULL_BRIGHT;
         }
         if (dem) {
-            d = LightTexture.FULL_BRIGHT;
+            d = LightCoordsUtil.FULL_BRIGHT;
         }
 
         return ((a + b + c + d) >> 2) & 0xFF00FF;

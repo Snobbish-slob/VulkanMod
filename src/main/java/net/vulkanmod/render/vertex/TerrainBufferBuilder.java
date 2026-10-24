@@ -146,6 +146,11 @@ public class TerrainBufferBuilder implements VertexConsumer {
     }
 
     @Override
+	@Override
+	public VertexConsumer setUv3(float u, float v) {
+		return this;
+	}
+
 	public VertexConsumer setUv1(int i, int j) {
 		return this;
 	}

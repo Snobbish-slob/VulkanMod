@@ -20,7 +20,7 @@ import java.util.Map;
 public abstract class PostPassM {
     @Shadow @Final private List<PostPass.Input> inputs;
 
-    @Inject(method = "method_67884", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/GpuDevice;createCommandEncoder()Lcom/mojang/blaze3d/systems/CommandEncoder;"))
+    @Inject(method = "lambda$addToFrame$1", at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/api/device/GpuDevice;createCommandEncoder()Lcom/mojang/renderpearl/api/commands/CommandEncoder;"))
     private void transitionLayouts(ResourceHandle resourceHandle, GpuBufferSlice gpuBufferSlice, Map map,
                                    CallbackInfo ci) {
         Renderer.getInstance().endRenderPass();

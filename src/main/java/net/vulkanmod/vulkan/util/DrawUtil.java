@@ -1,5 +1,6 @@
 package net.vulkanmod.vulkan.util;
 
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import net.vulkanmod.render.shader.PipelineManager;
 import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.VRenderSystem;
@@ -46,7 +47,7 @@ public class DrawUtil {
 ////        RenderSystem.setShader(() -> shaderInstance);
 //
 //        Tesselator tesselator = RenderSystem.renderThreadTesselator();
-//        BufferBuilder bufferBuilder = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+//        BufferBuilder bufferBuilder = tesselator.begin(PrimitiveTopology.QUADS, DefaultVertexFormat.POSITION_TEX);
 //        bufferBuilder.addVertex(-1.0f, -1.0f, 0.0f).setUv(0.0F, 1.0F);
 //        bufferBuilder.addVertex(1.0f, -1.0f, 0.0f).setUv(1.0F, 1.0F);
 //        bufferBuilder.addVertex(1.0f, 1.0f, 0.0f).setUv(1.0F, 0.0F);
@@ -60,6 +61,6 @@ public class DrawUtil {
 //        GraphicsPipeline pipeline = ((ShaderMixed)(shaderInstance)).getPipeline();
 //        renderer.bindGraphicsPipeline(pipeline);
 //        renderer.uploadAndBindUBOs(pipeline);
-//        Renderer.getDrawer().draw(meshData.vertexBuffer(), parameters.mode(), parameters.format(), parameters.vertexCount());
+//        Renderer.getDrawer().draw(meshData.vertexBuffer(), parameters.primitiveTopology(), parameters.format(), parameters.vertexCount());
 //    }
 }

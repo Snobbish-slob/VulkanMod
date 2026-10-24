@@ -1,86 +1,53 @@
 package net.vulkanmod.mixin.render;
 
-import com.mojang.renderpearl.api.buffers.GpuBuffer;
-import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.textures.FilterMode;
-import com.mojang.renderpearl.api.textures.GpuTextureView;
-import com.mojang.renderpearl.api.vertex.VertexFormat;
+import net.minecraft.client.gui.render.GuiItemAtlas;
 import net.minecraft.client.gui.render.GuiRenderer;
 import net.minecraft.client.gui.render.TextureSetup;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.state.gui.BlitRenderState;
 import net.minecraft.client.renderer.state.gui.GuiItemRenderState;
 import net.minecraft.client.renderer.state.gui.GuiRenderState;
-import net.minecraft.client.renderer.RenderPipelines;
-import net.vulkanmod.render.engine.VkRenderPass;
-import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(GuiRenderer.class)
 public abstract class GuiRendererMixin {
-
     @Shadow @Final private GuiRenderState renderState;
-    @Shadow private @Nullable GpuTextureView itemsAtlasView;
 
-//    // Debug
-//    @Redirect(method = "method_71055", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/item/TrackingItemStackRenderState;isAnimated()Z"))
-//    private boolean forceRender(TrackingItemStackRenderState instance) {
-//        return true;
-//    }
-
+    /**
+     * The GUI item atlas is a render target; VulkanMod's render targets are stored flipped
+     * compared to OpenGL, so the V coordinates have to be mirrored when blitting from it.
+     */
     @Inject(method = "submitBlitFromItemAtlas", at = @At("HEAD"), cancellable = true)
-    private void submitBlitFromItemAtlas(GuiItemRenderState guiItemRenderState, float u, float v, int size, int atlasSize,
-                                         CallbackInfo ci) {
-        v = 1.0f - v;
-        float u1 = u + (float)size / atlasSize;
-        float v1 = v + (float)(size) / atlasSize;
+    private void submitBlitFromItemAtlas(GuiItemRenderState itemState, GuiItemAtlas.SlotView slotView, CallbackInfo ci) {
+        float v0 = 1.0f - slotView.v0();
+        float v1 = v0 + (slotView.v1() - slotView.v0());
+
         this.renderState
-                .submitBlitToCurrentLayer(
+                .addBlitToCurrentLayer(
                         new BlitRenderState(
                                 RenderPipelines.GUI_TEXTURED_PREMULTIPLIED_ALPHA,
-                                TextureSetup.singleTexture(this.itemsAtlasView, RenderSystem.getSamplerCache().getRepeat(FilterMode.NEAREST)),
-                                guiItemRenderState.pose(),
-                                guiItemRenderState.x(),
-                                guiItemRenderState.y(),
-                                guiItemRenderState.x() + 16,
-                                guiItemRenderState.y() + 16,
-                                u,
-                                u1,
-                                v,
+                                TextureSetup.singleTexture(slotView.textureView(), RenderSystem.getSamplerCache().getRepeat(FilterMode.NEAREST)),
+                                itemState.pose(),
+                                itemState.x(),
+                                itemState.y(),
+                                itemState.x() + 16,
+                                itemState.y() + 16,
+                                slotView.u0(),
+                                slotView.u1(),
+                                v0,
                                 v1,
                                 -1,
-                                guiItemRenderState.scissorArea(),
+                                itemState.scissorArea(),
                                 null
                         )
                 );
-
         ci.cancel();
     }
-
-    @Redirect(method = "executeDraw", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/RenderPass;setIndexBuffer(Lcom/mojang/blaze3d/buffers/GpuBuffer;Lcom/mojang/blaze3d/vertex/VertexFormat$IndexType;)V"))
-    private void removeIndexBuffer(RenderPass instance, GpuBuffer gpuBuffer, VertexFormat.IndexType indexType) {
-        // This draw method forces quad index buffer, not allowing other draw modes
-        // Not binding it here will allow for a proper index  selection in lower level methods
-    }
-
-    @Redirect(method = "executeDraw", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/RenderPass;drawIndexed(IIII)V"))
-    private void useVertexCount(RenderPass renderPass, int baseVertex, int firstIndex, int indexCount, int instanceCount) {
-        // For the same reason here we need to use vertexCount instead of indexCount
-
-        VkRenderPass vkRenderPass = (VkRenderPass) renderPass;
-        if (vkRenderPass.getPipeline().getVertexFormatMode() != VertexFormat.Mode.TRIANGLES) {
-            int vertexCount = indexCount * 2 / 3;
-            renderPass.drawIndexed(baseVertex, 0, vertexCount, 1);
-        }
-        else {
-            renderPass.drawIndexed(baseVertex, 0, indexCount, 1);
-        }
-    }
-
 }

@@ -21,6 +21,6 @@ public class ClientPacketListenerM {
     @Inject(method = "handleForgetLevelChunk", at = @At("RETURN"))
     private void resetChunkStatus(ClientboundForgetLevelChunkPacket clientboundForgetLevelChunkPacket, CallbackInfo ci) {
         ChunkPos chunkPos = clientboundForgetLevelChunkPacket.pos();
-        ChunkStatusMap.INSTANCE.resetChunkStatus(chunkPos.x, chunkPos.z, ChunkStatusMap.LIGHT_READY);
+        ChunkStatusMap.INSTANCE.resetChunkStatus(chunkPos.x(), chunkPos.z(), ChunkStatusMap.LIGHT_READY);
     }
 }

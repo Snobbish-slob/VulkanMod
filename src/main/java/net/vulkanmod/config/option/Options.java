@@ -152,7 +152,7 @@ public abstract class Options {
                         new SwitchOption(Component.translatable("options.vsync"),
                                 value -> {
                                     mcOptions.enableVsync().set(value);
-                                    window.updateVsync(value);
+                                    minecraft.invalidateSurfaceConfiguration();
                                 },
                                 () -> mcOptions.enableVsync().get()),
                         new CyclingOption<>(Component.translatable("options.inactivityFpsLimit"),
@@ -167,7 +167,7 @@ public abstract class Options {
                                 value -> Component.translatable(value == 0 ? "options.guiScale.auto" : String.valueOf(value)),
                                 value -> {
                                     mcOptions.guiScale().set(value);
-                                    minecraft.resizeDisplay();
+                                    minecraft.resizeGui();
                                 },
                                 () -> mcOptions.guiScale().get()),
                         new RangeOption(Component.translatable("options.gamma"),
@@ -308,7 +308,7 @@ public abstract class Options {
                                 value -> {
                                     mcOptions.ambientOcclusion().set(value > LightMode.FLAT);
                                     config.ambientOcclusion = value;
-                                    minecraft.levelRenderer.allChanged();
+                                    minecraft.levelExtractor.allChanged();
                                 },
                                 () -> config.ambientOcclusion)
                                 .setTranslator(value -> Component.translatable(switch (value) {
@@ -326,7 +326,7 @@ public abstract class Options {
                                 value -> Component.nullToEmpty("%d x %d".formatted(value * 2 + 1, value * 2 + 1)),
                                 value -> {
                                     mcOptions.biomeBlendRadius().set(value);
-                                    minecraft.levelRenderer.allChanged();
+                                    minecraft.levelExtractor.allChanged();
                                 },
                                 () -> mcOptions.biomeBlendRadius().get())
                 }),
@@ -389,7 +389,7 @@ public abstract class Options {
                                 v -> {
                                     config.uniqueOpaqueLayer = v;
                                     TerrainRenderType.updateMapping();
-                                    minecraft.levelRenderer.allChanged();
+                                    minecraft.levelExtractor.allChanged();
                                 },
                                 () -> config.uniqueOpaqueLayer)
                                 .setTooltip(v -> Component.translatable("vulkanmod.options.uniqueOpaqueLayer.tooltip"))
@@ -397,7 +397,7 @@ public abstract class Options {
                         new SwitchOption(Component.translatable("vulkanmod.options.backfaceCulling"),
                                 v -> {
                                     config.backFaceCulling = v;
-                                    minecraft.levelRenderer.allChanged();
+                                    minecraft.levelExtractor.allChanged();
                                 },
                                 () -> config.backFaceCulling)
                                 .setTooltip(v -> Component.translatable("vulkanmod.options.backfaceCulling.tooltip"))

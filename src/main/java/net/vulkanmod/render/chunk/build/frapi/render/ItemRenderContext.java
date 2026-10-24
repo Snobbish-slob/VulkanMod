@@ -1,5 +1,6 @@
 package net.vulkanmod.render.chunk.build.frapi.render;
 
+import net.minecraft.util.LightCoordsUtil;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.MatrixUtil;
@@ -17,7 +18,6 @@ import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.vulkanmod.mixin.render.frapi.ItemRendererAccessor;
-import net.minecraft.client.renderer.Lightmap;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.Sheets;
 import net.minecraft.client.renderer.entity.ItemRenderer;
@@ -111,7 +111,7 @@ public class ItemRenderContext extends AbstractRenderContext {
 	private void shadeQuad(MutableQuadViewImpl quad, boolean emissive) {
 		if (emissive) {
 			for (int i = 0; i < 4; i++) {
-				quad.lightmap(i, LightTexture.FULL_BRIGHT);
+				quad.lightmap(i, LightCoordsUtil.FULL_BRIGHT);
 			}
 		} else {
 			final int lightmap = this.lightmap;

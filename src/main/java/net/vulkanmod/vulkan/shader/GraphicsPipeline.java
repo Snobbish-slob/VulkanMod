@@ -1,11 +1,11 @@
 package net.vulkanmod.vulkan.shader;
 
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.api.vertex.VertexFormat;
 import com.mojang.renderpearl.api.vertex.VertexFormatElement;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
-import net.vulkanmod.interfaces.VertexFormatMixed;
 import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.Vulkan;
 import net.vulkanmod.vulkan.device.DeviceManager;
@@ -274,7 +274,7 @@ public class GraphicsPipeline extends Pipeline {
         final VkVertexInputBindingDescription.Buffer bindingDescriptions;
 
         VertexInputDescription(VertexFormat vertexFormat) {
-            if (vertexFormat != DefaultVertexFormat.EMPTY) {
+            if (!vertexFormat.getElements().isEmpty()) {
                 this.bindingDescriptions = getBindingDescription(vertexFormat);
                 this.attributeDescriptions = getAttributeDescriptions(vertexFormat);
             }
@@ -297,7 +297,7 @@ public class GraphicsPipeline extends Pipeline {
 
         bindingDescription.binding(0);
         bindingDescription.stride(vertexFormat.getVertexSize());
-        bindingDescription.inputRate(VK_VERTEX_INPUT_RATE_VERTEX);
+        bindingDescription.inputRate(vertexFormat.getStepRate() > 0 ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX);
 
         return bindingDescription;
     }
@@ -309,126 +309,73 @@ public class GraphicsPipeline extends Pipeline {
 
         VkVertexInputAttributeDescription.Buffer attributeDescriptions = VkVertexInputAttributeDescription.calloc(size);
 
-        int offset = 0;
-
         for (int i = 0; i < size; ++i) {
             VkVertexInputAttributeDescription posDescription = attributeDescriptions.get(i);
             posDescription.binding(0);
             posDescription.location(i);
 
             VertexFormatElement formatElement = elements.get(i);
-            VertexFormatElement.Usage usage = formatElement.usage();
-            VertexFormatElement.Type type = formatElement.type();
-            int elementCount = formatElement.count();
-
-            switch (usage) {
-                case POSITION -> {
-                    switch (type) {
-                        case FLOAT -> {
-                            posDescription.format(VK_FORMAT_R32G32B32_SFLOAT);
-                            posDescription.offset(offset);
-
-                            offset += 12;
-                        }
-                        case SHORT -> {
-                            posDescription.format(VK_FORMAT_R16G16B16A16_SINT);
-                            posDescription.offset(offset);
-
-                            offset += 8;
-                        }
-                        case BYTE -> {
-                            posDescription.format(VK_FORMAT_R8G8B8A8_SINT);
-                            posDescription.offset(offset);
-
-                            offset += 4;
-                        }
-                    }
-
-                }
-
-                case COLOR -> {
-                    switch (type) {
-                        case UBYTE -> {
-                            posDescription.format(VK_FORMAT_R8G8B8A8_UNORM);
-                            posDescription.offset(offset);
-
-                            offset += 4;
-                        }
-                        case UINT -> {
-                            posDescription.format(VK_FORMAT_R32_UINT);
-                            posDescription.offset(offset);
-
-                            offset += 4;
-                        }
-                    }
-                }
-
-                case UV -> {
-                    switch (type) {
-                        case FLOAT -> {
-                            posDescription.format(VK_FORMAT_R32G32_SFLOAT);
-                            posDescription.offset(offset);
-
-                            offset += 8;
-                        }
-                        case SHORT -> {
-                            posDescription.format(VK_FORMAT_R16G16_SINT);
-                            posDescription.offset(offset);
-
-                            offset += 4;
-                        }
-                        case USHORT -> {
-                            posDescription.format(VK_FORMAT_R16G16_UINT);
-                            posDescription.offset(offset);
-
-                            offset += 4;
-                        }
-                        case UINT -> {
-                            posDescription.format(VK_FORMAT_R32_UINT);
-                            posDescription.offset(offset);
-
-                            offset += 4;
-                        }
-                    }
-                }
-
-                case NORMAL -> {
-                    posDescription.format(VK_FORMAT_R8G8B8A8_SNORM);
-                    posDescription.offset(offset);
-
-                    offset += 4;
-                }
-
-                case GENERIC -> {
-                    if (type == VertexFormatElement.Type.SHORT && elementCount == 1) {
-                        posDescription.format(VK_FORMAT_R16_SINT);
-                        posDescription.offset(offset);
-
-                        offset += 2;
-                    }
-                    else if (type == VertexFormatElement.Type.INT && elementCount == 1) {
-                        posDescription.format(VK_FORMAT_R32_SINT);
-                        posDescription.offset(offset);
-
-                        offset += 4;
-                    }
-                    else if (type == VertexFormatElement.Type.FLOAT && elementCount == 1) {
-                        posDescription.format(VK_FORMAT_R32_SFLOAT);
-                        posDescription.offset(offset);
-
-                        offset += 4;
-                    }
-                    else {
-                        throw new RuntimeException(String.format("Unknown type: %s", type));
-                    }
-                }
-
-                default -> throw new RuntimeException(String.format("Unknown format: %s", usage));
-            }
-
-            posDescription.offset(((VertexFormatMixed) (vertexFormat)).getOffset(i));
+            posDescription.format(vkVertexFormat(formatElement.format()));
+            posDescription.offset(formatElement.offset());
         }
 
-        return attributeDescriptions.rewind();
+        return attributeDescriptions;
+    }
+
+    public static int vkVertexFormat(GpuFormat format) {
+        return switch (format) {
+            case R8_UNORM -> VK_FORMAT_R8_UNORM;
+            case R8_SNORM -> VK_FORMAT_R8_SNORM;
+            case RG8_UNORM -> VK_FORMAT_R8G8_UNORM;
+            case RG8_SNORM -> VK_FORMAT_R8G8_SNORM;
+            case RGB8_UNORM -> VK_FORMAT_R8G8B8_UNORM;
+            case RGB8_SNORM -> VK_FORMAT_R8G8B8_SNORM;
+            case RGBA8_UNORM -> VK_FORMAT_R8G8B8A8_UNORM;
+            case RGBA8_SNORM -> VK_FORMAT_R8G8B8A8_SNORM;
+            case R16_UNORM -> VK_FORMAT_R16_UNORM;
+            case R16_SNORM -> VK_FORMAT_R16_SNORM;
+            case RG16_UNORM -> VK_FORMAT_R16G16_UNORM;
+            case RG16_SNORM -> VK_FORMAT_R16G16_SNORM;
+            case RGB16_UNORM -> VK_FORMAT_R16G16B16_UNORM;
+            case RGB16_SNORM -> VK_FORMAT_R16G16B16_SNORM;
+            case RGBA16_UNORM -> VK_FORMAT_R16G16B16A16_UNORM;
+            case RGBA16_SNORM -> VK_FORMAT_R16G16B16A16_SNORM;
+            case R8_UINT -> VK_FORMAT_R8_UINT;
+            case R8_SINT -> VK_FORMAT_R8_SINT;
+            case RG8_UINT -> VK_FORMAT_R8G8_UINT;
+            case RG8_SINT -> VK_FORMAT_R8G8_SINT;
+            case RGB8_UINT -> VK_FORMAT_R8G8B8_UINT;
+            case RGB8_SINT -> VK_FORMAT_R8G8B8_SINT;
+            case RGBA8_UINT -> VK_FORMAT_R8G8B8A8_UINT;
+            case RGBA8_SINT -> VK_FORMAT_R8G8B8A8_SINT;
+            case R16_UINT -> VK_FORMAT_R16_UINT;
+            case R16_SINT -> VK_FORMAT_R16_SINT;
+            case RG16_UINT -> VK_FORMAT_R16G16_UINT;
+            case RG16_SINT -> VK_FORMAT_R16G16_SINT;
+            case RGB16_UINT -> VK_FORMAT_R16G16B16_UINT;
+            case RGB16_SINT -> VK_FORMAT_R16G16B16_SINT;
+            case RGBA16_UINT -> VK_FORMAT_R16G16B16A16_UINT;
+            case RGBA16_SINT -> VK_FORMAT_R16G16B16A16_SINT;
+            case R32_UINT -> VK_FORMAT_R32_UINT;
+            case R32_SINT -> VK_FORMAT_R32_SINT;
+            case RG32_UINT -> VK_FORMAT_R32G32_UINT;
+            case RG32_SINT -> VK_FORMAT_R32G32_SINT;
+            case RGB32_UINT -> VK_FORMAT_R32G32B32_UINT;
+            case RGB32_SINT -> VK_FORMAT_R32G32B32_SINT;
+            case RGBA32_UINT -> VK_FORMAT_R32G32B32A32_UINT;
+            case RGBA32_SINT -> VK_FORMAT_R32G32B32A32_SINT;
+            case R16_FLOAT -> VK_FORMAT_R16_SFLOAT;
+            case RG16_FLOAT -> VK_FORMAT_R16G16_SFLOAT;
+            case RGB16_FLOAT -> VK_FORMAT_R16G16B16_SFLOAT;
+            case RGBA16_FLOAT -> VK_FORMAT_R16G16B16A16_SFLOAT;
+            case R32_FLOAT -> VK_FORMAT_R32_SFLOAT;
+            case RG32_FLOAT -> VK_FORMAT_R32G32_SFLOAT;
+            case RGB32_FLOAT -> VK_FORMAT_R32G32B32_SFLOAT;
+            case RGBA32_FLOAT -> VK_FORMAT_R32G32B32A32_SFLOAT;
+            case RGB10A2_UNORM -> VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+            case RGB10A2_UINT -> VK_FORMAT_A2B10G10R10_UINT_PACK32;
+            case RG11B10_FLOAT -> VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+            default -> throw new RuntimeException(String.format("Unsupported vertex attribute format: %s", format));
+        };
     }
 }

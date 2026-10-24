@@ -128,7 +128,7 @@ public class FluidRenderer implements FluidRendering.DefaultRenderer {
         final int posY = blockPos.getY();
         final int posZ = blockPos.getZ();
 
-        boolean useAO = blockState.getLightEmission() == 0 && Minecraft.useAmbientOcclusion();
+        boolean useAO = blockState.getLightEmission() == 0 && Minecraft.getInstance().options.ambientOcclusion().get();
         LightPipeline lightPipeline = useAO ? this.smoothLightPipeline : this.flatLightPipeline;
 
         BlockState downState = getAdjBlockState(region, posX, posY, posZ, Direction.DOWN);

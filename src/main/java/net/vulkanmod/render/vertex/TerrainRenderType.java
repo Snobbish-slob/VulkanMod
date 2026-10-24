@@ -48,7 +48,6 @@ public enum TerrainRenderType {
             case SOLID -> SOLID;
             case CUTOUT -> CUTOUT;
             case TRANSLUCENT -> TRANSLUCENT;
-            case TRIPWIRE -> TRIPWIRE;
         };
     }
 
@@ -66,8 +65,7 @@ public enum TerrainRenderType {
         return switch (renderType) {
             case SOLID -> ChunkSectionLayer.SOLID;
             case CUTOUT -> ChunkSectionLayer.CUTOUT;
-            case TRANSLUCENT -> ChunkSectionLayer.TRANSLUCENT;
-            case TRIPWIRE -> ChunkSectionLayer.TRIPWIRE;
+            case TRANSLUCENT, TRIPWIRE -> ChunkSectionLayer.TRANSLUCENT;
         };
     }
 

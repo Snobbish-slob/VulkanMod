@@ -60,7 +60,7 @@ public class BlockRenderer extends AbstractBlockRenderContext {
         this.terrainBuilder = this.resources.builderPack.builder(renderType);
         this.terrainBuilder.setBlockAttributes(blockState);
 
-        BlockStateModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(blockState);
+        BlockStateModel model = Minecraft.getInstance().getModelManager().getBlockStateModelSet().get(blockState);
 
         BlockAndTintGetter renderRegion = this.renderRegion;
         Vec3 offset = blockState.getOffset(blockPos);
