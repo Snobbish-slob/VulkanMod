@@ -26,6 +26,7 @@
     "matrix.PoseAccessor",
 
     "profiling.GuiMixin",
+    "profiling.HudMixin",
     "profiling.KeyboardHandlerM",
     "profiling.LevelRendererMixin",
 
