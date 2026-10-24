@@ -1,6 +1,6 @@
 package net.vulkanmod.render.engine;
 
-import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
 
 import java.nio.ByteBuffer;
 import java.util.function.Supplier;

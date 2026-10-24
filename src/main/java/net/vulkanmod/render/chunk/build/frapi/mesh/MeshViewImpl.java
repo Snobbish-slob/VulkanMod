@@ -17,9 +17,9 @@
 package net.vulkanmod.render.chunk.build.frapi.mesh;
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import net.fabricmc.fabric.api.renderer.v1.mesh.MeshView;
-import net.fabricmc.fabric.api.renderer.v1.mesh.QuadEmitter;
-import net.fabricmc.fabric.api.renderer.v1.mesh.QuadView;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.MeshView;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadView;
 import org.jetbrains.annotations.Range;
 
 import java.util.function.Consumer;

@@ -1,8 +1,8 @@
 package net.vulkanmod.mixin.render.frame;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.systems.CommandEncoder;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.commands.CommandEncoder;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import net.minecraft.client.Minecraft;
 import net.vulkanmod.render.texture.ImageUploadHelper;
 import net.vulkanmod.vulkan.Renderer;

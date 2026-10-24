@@ -1,7 +1,7 @@
 package net.vulkanmod.render.engine;
 
-import com.mojang.blaze3d.textures.AddressMode;
-import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.AddressMode;
+import com.mojang.renderpearl.api.textures.FilterMode;
 import org.lwjgl.vulkan.VK10;
 
 public class VkConst {

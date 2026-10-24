@@ -1,10 +1,10 @@
 package net.vulkanmod.mixin.render.frapi;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import net.fabricmc.fabric.api.renderer.v1.render.FabricLayerRenderState;
-import net.fabricmc.fabric.api.renderer.v1.render.ItemRenderTypeGetter;
+import net.fabricmc.fabric.api.client.renderer.v1.render.FabricLayerRenderState;
+import net.fabricmc.fabric.api.client.renderer.v1.render.ItemRenderTypeGetter;
 import net.minecraft.client.renderer.SubmitNodeCollector;
-import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.world.item.ItemDisplayContext;

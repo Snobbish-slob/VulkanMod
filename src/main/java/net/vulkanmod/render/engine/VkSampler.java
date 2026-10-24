@@ -1,8 +1,8 @@
 package net.vulkanmod.render.engine;
 
-import com.mojang.blaze3d.textures.AddressMode;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.AddressMode;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuSampler;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.vulkanmod.vulkan.texture.SamplerManager;

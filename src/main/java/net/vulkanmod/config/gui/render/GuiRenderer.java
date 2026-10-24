@@ -1,6 +1,6 @@
 package net.vulkanmod.config.gui.render;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.*;
 import net.minecraft.util.Util;
 import net.minecraft.client.Minecraft;

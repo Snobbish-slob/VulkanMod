@@ -1,6 +1,6 @@
 package net.vulkanmod.vulkan;
 
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.vulkanmod.render.engine.VkGpuBuffer;
 import net.vulkanmod.vulkan.memory.*;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;

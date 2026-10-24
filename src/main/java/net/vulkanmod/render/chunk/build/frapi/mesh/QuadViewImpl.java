@@ -16,8 +16,8 @@
 
 package net.vulkanmod.render.chunk.build.frapi.mesh;
 
-import net.fabricmc.fabric.api.renderer.v1.mesh.QuadAtlas;
-import net.fabricmc.fabric.api.renderer.v1.mesh.ShadeMode;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadAtlas;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.ShadeMode;
 import net.fabricmc.fabric.api.util.TriState;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
@@ -27,7 +27,7 @@ import net.vulkanmod.render.model.quad.ModelQuadView;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
-import net.fabricmc.fabric.api.renderer.v1.mesh.QuadView;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadView;
 import net.vulkanmod.render.chunk.build.frapi.helper.GeometryHelper;
 import net.vulkanmod.render.chunk.build.frapi.helper.NormalHelper;
 import net.minecraft.core.Direction;

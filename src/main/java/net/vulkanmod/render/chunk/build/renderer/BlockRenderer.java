@@ -1,7 +1,7 @@
 package net.vulkanmod.render.chunk.build.renderer;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.fabricmc.fabric.api.renderer.v1.mesh.ShadeMode;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.ShadeMode;
 import net.fabricmc.fabric.api.util.TriState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;

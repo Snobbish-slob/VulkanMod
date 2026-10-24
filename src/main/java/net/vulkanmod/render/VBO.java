@@ -1,7 +1,7 @@
 package net.vulkanmod.render;
 
 import com.mojang.blaze3d.vertex.MeshData;
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.memory.*;
 import net.vulkanmod.vulkan.memory.buffer.IndexBuffer;

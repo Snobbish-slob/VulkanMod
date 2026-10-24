@@ -1,6 +1,6 @@
 package net.vulkanmod.mixin.render;
 
-import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.renderpearl.backend.opengl.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.jtracy.Plot;
 import net.vulkanmod.gl.*;

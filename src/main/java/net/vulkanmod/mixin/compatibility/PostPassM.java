@@ -1,6 +1,6 @@
 package net.vulkanmod.mixin.compatibility;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.resource.ResourceHandle;
 import com.mojang.blaze3d.vertex.*;
 import net.minecraft.client.renderer.PostPass;

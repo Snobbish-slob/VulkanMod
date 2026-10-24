@@ -18,7 +18,7 @@ package net.vulkanmod.render.chunk.build.frapi.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.fabricmc.fabric.api.renderer.v1.mesh.QuadEmitter;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
 import net.vulkanmod.render.chunk.build.frapi.mesh.EncodingFormat;
 import net.vulkanmod.render.chunk.build.frapi.mesh.MutableQuadViewImpl;
 import net.vulkanmod.vulkan.util.ColorUtil;

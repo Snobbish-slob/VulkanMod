@@ -17,14 +17,14 @@
 package net.vulkanmod.mixin.render.frapi;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import net.fabricmc.fabric.api.renderer.v1.mesh.MeshView;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.MeshView;
 
-import net.fabricmc.fabric.api.renderer.v1.render.ItemRenderTypeGetter;
+import net.fabricmc.fabric.api.client.renderer.v1.render.ItemRenderTypeGetter;
 import net.minecraft.client.renderer.OrderedSubmitNodeCollector;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.SubmitNodeStorage;
 
-import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.vulkanmod.render.chunk.build.frapi.accessor.AccessRenderCommandQueue;

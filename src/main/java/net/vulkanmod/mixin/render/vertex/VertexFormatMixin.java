@@ -1,8 +1,8 @@
 package net.vulkanmod.mixin.render.vertex;
 
 import com.google.common.collect.ImmutableMap;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.blaze3d.vertex.VertexFormatElement;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
+import com.mojang.renderpearl.api.vertex.VertexFormatElement;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.vulkanmod.interfaces.VertexFormatMixed;

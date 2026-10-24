@@ -1,7 +1,7 @@
 package net.vulkanmod.mixin.render;
 
-import com.mojang.blaze3d.shaders.ShaderSource;
-import com.mojang.blaze3d.systems.GpuDevice;
+import com.mojang.renderpearl.api.pipeline.ShaderSource;
+import com.mojang.renderpearl.api.device.GpuDevice;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.SamplerCache;
 import com.mojang.blaze3d.vertex.*;

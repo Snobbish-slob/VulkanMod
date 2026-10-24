@@ -2,9 +2,10 @@ package net.vulkanmod.mixin.render.target;
 
 import com.mojang.blaze3d.pipeline.MainTarget;
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.systems.GpuDevice;
+import com.mojang.renderpearl.api.device.GpuDevice;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.*;
+import com.mojang.renderpearl.api.textures.*;
+import com.mojang.renderpearl.api.GpuFormat;
 import net.vulkanmod.vulkan.Renderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;

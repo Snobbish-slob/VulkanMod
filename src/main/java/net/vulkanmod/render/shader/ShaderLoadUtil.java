@@ -4,7 +4,7 @@ import com.google.common.collect.Sets;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.mojang.blaze3d.shaders.ShaderType;
+import com.mojang.renderpearl.api.pipeline.ShaderType;
 import net.minecraft.resources.Identifier;
 import net.vulkanmod.vulkan.shader.SpirvCompiler;
 import org.apache.commons.io.IOUtils;

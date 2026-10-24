@@ -1,6 +1,6 @@
 package net.vulkanmod.render.chunk.build.light.flat;
 
-import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.Lightmap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.vulkanmod.render.chunk.util.SimpleDirection;

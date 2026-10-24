@@ -1,6 +1,6 @@
 package net.vulkanmod.render.engine;
 
-import com.mojang.blaze3d.opengl.*;
+import com.mojang.renderpearl.backend.opengl.*;
 import com.mojang.logging.LogUtils;
 import java.util.Set;
 

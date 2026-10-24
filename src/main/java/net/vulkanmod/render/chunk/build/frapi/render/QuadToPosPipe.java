@@ -1,6 +1,6 @@
 package net.vulkanmod.render.chunk.build.frapi.render;
 
-import net.fabricmc.fabric.api.renderer.v1.mesh.QuadView;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadView;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;

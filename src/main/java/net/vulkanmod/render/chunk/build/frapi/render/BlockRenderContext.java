@@ -2,8 +2,8 @@ package net.vulkanmod.render.chunk.build.frapi.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.fabricmc.fabric.api.renderer.v1.mesh.ShadeMode;
-import net.fabricmc.fabric.api.renderer.v1.render.BlockVertexConsumerProvider;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.ShadeMode;
+import net.fabricmc.fabric.api.client.renderer.v1.render.BlockVertexConsumerProvider;
 import net.fabricmc.fabric.api.util.TriState;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.block.model.BlockStateModel;

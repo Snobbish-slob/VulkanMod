@@ -17,13 +17,13 @@
 package net.vulkanmod.render.chunk.build.frapi.mesh;
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import net.fabricmc.fabric.api.renderer.v1.mesh.*;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.*;
 import net.fabricmc.fabric.api.util.TriState;
 import net.minecraft.client.model.geom.builders.UVPair;
-import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.Lightmap;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
-import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.core.Direction;
 import net.vulkanmod.render.chunk.build.frapi.helper.NormalHelper;
 import org.jspecify.annotations.Nullable;

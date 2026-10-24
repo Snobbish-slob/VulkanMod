@@ -1,8 +1,8 @@
 package net.vulkanmod.vulkan.pass;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.vulkanmod.render.engine.VkGpuDevice;
 import net.vulkanmod.render.engine.VkGpuTexture;
 import net.vulkanmod.vulkan.Renderer;

@@ -1,7 +1,7 @@
 package net.vulkanmod.render.vertex;
 
-import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.blaze3d.vertex.VertexFormatElement;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
+import com.mojang.renderpearl.api.vertex.VertexFormatElement;
 
 public class CustomVertexFormat {
     public static final VertexFormatElement ELEMENT_POSITION_INT16 = new VertexFormatElement(0, 0, VertexFormatElement.Type.SHORT, VertexFormatElement.Usage.POSITION, 4);

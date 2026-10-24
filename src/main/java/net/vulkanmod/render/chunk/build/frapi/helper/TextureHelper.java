@@ -16,7 +16,7 @@
 
 package net.vulkanmod.render.chunk.build.frapi.helper;
 
-import net.fabricmc.fabric.api.renderer.v1.mesh.MutableQuadView;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.MutableQuadView;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.Direction;
 

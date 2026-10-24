@@ -1,12 +1,12 @@
 package net.vulkanmod.render.chunk.build.frapi;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import net.fabricmc.fabric.api.renderer.v1.mesh.MutableMesh;
-import net.fabricmc.fabric.api.renderer.v1.mesh.QuadEmitter;
-import net.fabricmc.fabric.api.renderer.v1.render.BlockVertexConsumerProvider;
-import net.fabricmc.fabric.api.renderer.v1.render.FabricBlockModelRenderer;
-import net.fabricmc.fabric.api.renderer.v1.render.ItemRenderTypeGetter;
-import net.fabricmc.fabric.api.renderer.v1.render.RenderLayerHelper;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.MutableMesh;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
+import net.fabricmc.fabric.api.client.renderer.v1.render.BlockVertexConsumerProvider;
+import net.fabricmc.fabric.api.client.renderer.v1.render.FabricBlockModelRenderer;
+import net.fabricmc.fabric.api.client.renderer.v1.render.ItemRenderTypeGetter;
+import net.fabricmc.fabric.api.client.renderer.v1.render.RenderLayerHelper;
 import net.fabricmc.fabric.mixin.client.indigo.renderer.BlockRenderDispatcherAccessor;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
@@ -15,7 +15,7 @@ import net.minecraft.client.renderer.block.model.BlockStateModel;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.core.BlockPos;
 
-import net.fabricmc.fabric.api.renderer.v1.Renderer;
+import net.fabricmc.fabric.api.client.renderer.v1.Renderer;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;

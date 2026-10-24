@@ -20,7 +20,7 @@ import net.vulkanmod.render.model.quad.ModelQuadView;
 import net.vulkanmod.render.vertex.format.I32_SNorm;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Vector3f;
-import net.fabricmc.fabric.api.renderer.v1.mesh.QuadView;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadView;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.util.Mth;

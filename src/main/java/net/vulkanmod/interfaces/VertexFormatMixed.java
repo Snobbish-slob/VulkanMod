@@ -1,6 +1,6 @@
 package net.vulkanmod.interfaces;
 
-import com.mojang.blaze3d.vertex.VertexFormatElement;
+import com.mojang.renderpearl.api.vertex.VertexFormatElement;
 
 import java.util.List;
 

@@ -1,7 +1,7 @@
 package net.vulkanmod;
 
 import net.fabricmc.api.ClientModInitializer;
-import net.fabricmc.fabric.api.renderer.v1.Renderer;
+import net.fabricmc.fabric.api.client.renderer.v1.Renderer;
 import net.fabricmc.loader.api.FabricLoader;
 import net.vulkanmod.config.Config;
 import net.vulkanmod.config.Platform;

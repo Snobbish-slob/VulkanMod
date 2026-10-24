@@ -1,7 +1,7 @@
 package net.vulkanmod.mixin.render.particle;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.renderer.state.QuadParticleRenderState;
+import net.minecraft.client.renderer.state.level.QuadParticleRenderState;
 import net.vulkanmod.interfaces.ExtendedVertexBuilder;
 import net.vulkanmod.vulkan.util.ColorUtil;
 import org.joml.Quaternionf;

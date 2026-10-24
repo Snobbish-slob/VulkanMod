@@ -2,8 +2,8 @@ package net.vulkanmod.mixin.render.vertex;
 
 import com.mojang.blaze3d.vertex.*;
 import net.minecraft.client.model.geom.builders.UVPair;
-import net.minecraft.client.renderer.LightTexture;
-import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.Lightmap;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.vulkanmod.interfaces.ExtendedVertexBuilder;
 import net.vulkanmod.mixin.matrix.PoseAccessor;
 import net.vulkanmod.render.util.MathUtil;

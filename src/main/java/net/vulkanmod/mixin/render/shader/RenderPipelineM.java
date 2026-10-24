@@ -1,6 +1,6 @@
 package net.vulkanmod.mixin.render.shader;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import net.vulkanmod.interfaces.shader.ExtendedRenderPipeline;
 import net.vulkanmod.render.engine.EGlProgram;
 import net.vulkanmod.vulkan.shader.GraphicsPipeline;

@@ -1,6 +1,6 @@
 package net.vulkanmod.mixin.profiling;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.resource.ResourceHandle;
 import net.minecraft.client.Camera;
 import net.minecraft.client.CloudStatus;

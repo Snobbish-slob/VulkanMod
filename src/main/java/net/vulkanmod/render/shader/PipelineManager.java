@@ -2,7 +2,7 @@ package net.vulkanmod.render.shader;
 
 import com.google.gson.JsonObject;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.vulkanmod.render.chunk.build.thread.ThreadBuilderPack;
 import net.vulkanmod.render.vertex.CustomVertexFormat;

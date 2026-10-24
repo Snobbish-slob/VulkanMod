@@ -1,6 +1,6 @@
 package net.vulkanmod.render.engine;
 
-import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.renderpearl.backend.opengl.GlStateManager;
 import net.minecraft.util.ARGB;
 import net.vulkanmod.gl.VkGlFramebuffer;
 import net.vulkanmod.vulkan.Renderer;
