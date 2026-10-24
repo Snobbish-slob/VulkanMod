@@ -12,7 +12,6 @@ import net.vulkanmod.config.video.*;
 import net.vulkanmod.render.chunk.WorldRenderer;
 import net.vulkanmod.render.chunk.build.light.LightMode;
 import net.vulkanmod.render.vertex.TerrainRenderType;
-import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.device.DeviceManager;
 
 import java.util.ArrayList;
@@ -145,7 +144,7 @@ public abstract class Options {
                         new SwitchOption(Component.translatable("options.vsync"),
                                 value -> {
                                     mcOptions.enableVsync().set(value);
-                                    minecraft.invalidateSurfaceConfiguration();
+                                    Minecraft.getInstance().invalidateSurfaceConfiguration();
                                 },
                                 () -> mcOptions.enableVsync().get()),
                         new CyclingOption<>(Component.translatable("options.inactivityFpsLimit"),
@@ -421,7 +420,8 @@ public abstract class Options {
                                 2, 5, 1,
                                 value -> {
                                     config.frameQueueSize = value;
-                                    Renderer.scheduleSwapChainUpdate();
+                                    // Applied when the surface is reconfigured
+                                    Minecraft.getInstance().invalidateSurfaceConfiguration();
                                 },
                                 () -> config.frameQueueSize)
                                 .setTooltip(v -> Component.translatable("vulkanmod.options.frameQueue.tooltip")),

@@ -1,7 +1,6 @@
 package net.vulkanmod.render.sky;
 
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
-import com.mojang.renderpearl.backend.opengl.GlStateManager;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -123,8 +122,6 @@ public class CloudRenderer {
         float yTranslation = (float) (centerY);
         float zTranslation = (float) (centerZ - (centerCellZ * CELL_WIDTH));
 
-        Renderer.getInstance().getMainPass().rebindMainTarget();
-
         Matrix4fStack poseStack = RenderSystem.getModelViewStack();
         poseStack.pushMatrix();
         poseStack.translate(-xTranslation, yTranslation, -zTranslation);
@@ -142,11 +139,10 @@ public class CloudRenderer {
         VRenderSystem.enableBlend();
         VRenderSystem.glBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
         VRenderSystem.enableDepthTest();
-        VRenderSystem.glDepthFun(GL11.GL_LEQUAL);
-        GlStateManager._enableDepthTest();
-        GlStateManager._depthMask(true);
+        VRenderSystem.glDepthFun(GL11.GL_GEQUAL);
+        VRenderSystem.depthMask(true);
         VRenderSystem.colorMask(true, true, true, true);
-        GlStateManager._disablePolygonOffset();
+        VRenderSystem.disablePolygonOffset();
         VRenderSystem.setPolygonModeGL(GL11.GL_FILL);
         VRenderSystem.setPrimitiveTopologyGL(GL11.GL_TRIANGLES);
 

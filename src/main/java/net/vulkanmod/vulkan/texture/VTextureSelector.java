@@ -1,9 +1,7 @@
 package net.vulkanmod.vulkan.texture;
 
 import net.vulkanmod.Initializer;
-import net.vulkanmod.gl.VkGlTexture;
 import net.vulkanmod.render.engine.VkGpuTexture;
-import net.vulkanmod.render.texture.SpriteUpdateUtil;
 import net.vulkanmod.vulkan.VRenderSystem;
 import net.vulkanmod.vulkan.shader.Pipeline;
 import net.vulkanmod.vulkan.shader.descriptor.ImageDescriptor;
@@ -73,9 +71,6 @@ public abstract class VTextureSelector {
         if (texture == null)
             throw new NullPointerException("Texture is null at index: " + activeTexture);
 
-        // Images need to be transitioned before main cmd buffer execution
-        SpriteUpdateUtil.addTransitionedLayout(texture);
-
         texture.uploadSubTextureAsync(mipLevel, arrayLayer, width, height, xOffset, yOffset, unpackSkipRows, unpackSkipPixels,
                                       unpackRowLength, bufferPtr);
     }
@@ -105,17 +100,9 @@ public abstract class VTextureSelector {
 
             VkGpuTexture gpuTexture = (VkGpuTexture) textureView.texture();
 
-            final int shaderTexture = gpuTexture.glId();
-            VkGlTexture texture = VkGlTexture.getTexture(shaderTexture);
-
-            if (texture != null && texture.getVulkanImage() != null) {
-                VTextureSelector.bindTexture(state.imageIdx, texture.getVulkanImage());
+            if (gpuTexture.getVulkanImage() != null) {
+                VTextureSelector.bindTexture(state.imageIdx, gpuTexture.getVulkanImage());
             }
-            // TODO
-//            else {
-//                 texture = GlTexture.getTexture(MissingTextureAtlasSprite.getTexture().getId());
-//                 VTextureSelector.bindTexture(state.imageIdx, texture.getVulkanImage());
-//            }
         }
     }
 

@@ -1,7 +1,6 @@
 package net.vulkanmod.render.chunk;
 
 import com.google.common.collect.Sets;
-import com.mojang.renderpearl.backend.opengl.GlStateManager;
 import com.mojang.blaze3d.vertex.PoseStack;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -10,7 +9,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.TextureFilteringMethod;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.RenderBuffers;
-import net.minecraft.client.renderer.SubmitNodeStorage;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
 import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -318,8 +316,6 @@ public class WorldRenderer {
     }
 
     public void renderSectionLayer(TerrainRenderType renderType, double camX, double camY, double camZ, Matrix4f modelView, Matrix4f projection) {
-        Renderer.getInstance().getMainPass().rebindMainTarget();
-
         this.sortTranslucentSections(camX, camY, camZ);
 
         ProfilerFiller mcProfiler = net.minecraft.util.profiling.Profiler.get();
@@ -336,13 +332,14 @@ public class WorldRenderer {
         }
 
         VRenderSystem.enableCull();
-        VRenderSystem.glDepthFun(GL11.GL_LEQUAL);
+        // 26.3 uses reversed depth
+        VRenderSystem.glDepthFun(GL11.GL_GEQUAL);
 
-        GlStateManager._enableDepthTest();
-        GlStateManager._depthMask(true);
+        VRenderSystem.enableDepthTest();
+        VRenderSystem.depthMask(true);
 
         VRenderSystem.colorMask(true, true, true, true);
-        GlStateManager._disablePolygonOffset();
+        VRenderSystem.disablePolygonOffset();
         VRenderSystem.setPolygonModeGL(GL11.GL_FILL);
 
         VRenderSystem.applyMVP(modelView, projection);
@@ -461,17 +458,25 @@ public class WorldRenderer {
         mcProfiler.pop();
     }
 
-    public void renderBlockEntities(PoseStack poseStack, LevelRenderState levelRenderState,
-                                    SubmitNodeStorage submitNodeStorage,
-                                    Long2ObjectMap<SortedSet<BlockDestructionProgress>> destructionProgress) {
+    /**
+     * Collects the render states of the block entities in the visible sections (game thread side,
+     * replaces {@code LevelExtractor.extractVisibleBlockEntities}).
+     */
+    public void extractBlockEntities(Camera camera, float partialTick, LevelRenderState levelRenderState,
+                                     Long2ObjectMap<SortedSet<BlockDestructionProgress>> destructionProgress) {
         Profiler profiler = Profiler.getMainProfiler();
-        profiler.pop();
         profiler.push("Block-entities");
 
-        Vec3 vec3 = levelRenderState.cameraRenderState.pos;
-        double camX = vec3.x();
-        double camY = vec3.y();
-        double camZ = vec3.z();
+        if (this.sectionGraph == null) {
+            profiler.pop();
+            return;
+        }
+
+        Vec3 cameraPos = camera.position();
+        double camX = cameraPos.x();
+        double camY = cameraPos.y();
+        double camZ = cameraPos.z();
+        PoseStack poseStack = new PoseStack();
 
         for (RenderSection renderSection : this.sectionGraph.getBlockEntitiesSections()) {
             List<BlockEntity> list = renderSection.getCompiledSection().getBlockEntities();
@@ -490,7 +495,7 @@ public class WorldRenderer {
                         crumblingOverlay = null;
                     }
 
-                    BlockEntityRenderState blockEntityRenderState = this.blockEntityRenderDispatcher.tryExtractRenderState(blockEntity, this.partialTick, crumblingOverlay, false);
+                    BlockEntityRenderState blockEntityRenderState = this.blockEntityRenderDispatcher.tryExtractRenderState(blockEntity, partialTick, crumblingOverlay, false);
                     if (blockEntityRenderState != null) {
                         levelRenderState.blockEntityRenderStates.add(blockEntityRenderState);
                     }
@@ -505,21 +510,14 @@ public class WorldRenderer {
             if (blockEntity2.isRemoved()) {
                 iterator.remove();
             } else {
-                BlockEntityRenderState blockEntityRenderState2 = this.blockEntityRenderDispatcher.tryExtractRenderState(blockEntity2, this.partialTick, null, true);
+                BlockEntityRenderState blockEntityRenderState2 = this.blockEntityRenderDispatcher.tryExtractRenderState(blockEntity2, partialTick, null, true);
                 if (blockEntityRenderState2 != null) {
                     levelRenderState.blockEntityRenderStates.add(blockEntityRenderState2);
                 }
             }
         }
 
-        for (BlockEntityRenderState blockEntityRenderState : levelRenderState.blockEntityRenderStates) {
-            BlockPos blockPos = blockEntityRenderState.blockPos;
-            poseStack.pushPose();
-            poseStack.translate(blockPos.getX() - camX, blockPos.getY() - camY, blockPos.getZ() - camZ);
-            var blockEntityRenderDispatcher = this.minecraft.getBlockEntityRenderDispatcher();
-            blockEntityRenderDispatcher.submit(blockEntityRenderState, poseStack, submitNodeStorage, levelRenderState.cameraRenderState);
-            poseStack.popPose();
-        }
+        profiler.pop();
     }
 
     public void resetSampler() {

@@ -48,6 +48,10 @@ public abstract class Pipeline {
         }
     }
 
+    public static long getPipelineCache() {
+        return PIPELINE_CACHE;
+    }
+
     public static void destroyPipelineCache() {
         vkDestroyPipelineCache(DEVICE, PIPELINE_CACHE, null);
     }
@@ -222,7 +226,7 @@ public abstract class Pipeline {
         this.descriptorSets[frame].bindSets(commandBuffer, uniformBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
     }
 
-    protected static long createShaderModule(ByteBuffer spirvCode) {
+    public static long createShaderModule(ByteBuffer spirvCode) {
         try (MemoryStack stack = stackPush()) {
             VkShaderModuleCreateInfo createInfo = VkShaderModuleCreateInfo.calloc(stack);
 

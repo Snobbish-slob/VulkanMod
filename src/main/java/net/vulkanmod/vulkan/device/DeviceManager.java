@@ -41,6 +41,9 @@ public abstract class DeviceManager {
     private static Set<String> enabledExtensions;
     private static SurfaceProperties surfaceProperties;
     public static boolean fullScreenExclusiveControl = false;
+    public static boolean fillModeNonSolid = false;
+    public static boolean drawIndirectFirstInstance = false;
+    public static boolean shaderDrawParameters = false;
 
     static GraphicsQueue graphicsQueue;
     static PresentQueue presentQueue;
@@ -191,6 +194,15 @@ public abstract class DeviceManager {
                 deviceFeatures.features().wideLines(true);
                 VRenderSystem.canSetLineWidth = true;
             }
+
+            // Optional features reported to the game through DeviceFeatures
+            fillModeNonSolid = device.availableFeatures.features().fillModeNonSolid();
+            deviceFeatures.features().fillModeNonSolid(fillModeNonSolid);
+
+            drawIndirectFirstInstance = device.availableFeatures.features().drawIndirectFirstInstance();
+            deviceFeatures.features().drawIndirectFirstInstance(drawIndirectFirstInstance);
+
+            shaderDrawParameters = device.isDrawIndirectSupported();
 
             if (device.availableFeatures12.samplerFilterMinmax()) {
                 deviceVulkan12Features.samplerFilterMinmax(true);

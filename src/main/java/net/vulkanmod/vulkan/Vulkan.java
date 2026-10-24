@@ -4,7 +4,6 @@ import net.minecraft.util.Util;
 import net.vulkanmod.Initializer;
 import net.vulkanmod.vulkan.device.Device;
 import net.vulkanmod.vulkan.device.DeviceManager;
-import net.vulkanmod.vulkan.framebuffer.SwapChain;
 import net.vulkanmod.vulkan.memory.MemoryManager;
 import net.vulkanmod.vulkan.memory.MemoryTypes;
 import net.vulkanmod.vulkan.memory.buffer.StagingBuffer;
@@ -33,6 +32,7 @@ import static java.util.stream.Collectors.toSet;
 import static net.vulkanmod.vulkan.queue.Queue.getQueueFamilies;
 import static net.vulkanmod.vulkan.util.VUtil.asPointerBuffer;
 import org.lwjgl.sdl.SDLError;
+import org.lwjgl.sdl.SDLVideo;
 import org.lwjgl.sdl.SDLVulkan;
 import static org.lwjgl.system.MemoryStack.*;
 import static org.lwjgl.system.MemoryUtil.NULL;
@@ -86,35 +86,71 @@ public class Vulkan {
     public static boolean surfaceCapabilities2Supported = false;
     private static int DEFAULT_DEPTH_FORMAT = 0;
 
-    public static void initVulkan(long window) {
+    /**
+     * Creates the instance, picks the device and creates the allocator.
+     * <p>
+     * Minecraft 26.3 creates the GPU device before the game window exists, so device
+     * selection (which needs a surface to query presentation support) is done against a
+     * temporary hidden SDL window. The real surface is created later via {@link #createSurface(long)}.
+     */
+    public static void initVulkan() {
         Instance.createInstance();
         Debug.setupDebugMessenger();
-        createSurface(window);
 
-        DeviceManager.init(Instance.instance);
-        setupDepthFormat();
+        long probeWindow = SDLVideo.SDL_CreateWindow("VulkanMod probe", 1, 1, SDLVideo.SDL_WINDOW_VULKAN | SDLVideo.SDL_WINDOW_HIDDEN);
+        if (probeWindow == NULL) {
+            throw new RuntimeException("Failed to create probe window: " + SDLError.SDL_GetError());
+        }
 
-        createVma();
-        MemoryTypes.createMemoryTypes();
+        try {
+            surface = createSurfaceHandle(probeWindow);
 
-        createCommandPool();
-    }
+            DeviceManager.init(Instance.instance);
+            setupDepthFormat();
 
-    public static void createSurface(long handle) {
-        window = handle;
+            createVma();
+            MemoryTypes.createMemoryTypes();
 
-        try (MemoryStack stack = stackPush()) {
-            LongBuffer pSurface = stack.longs(VK_NULL_HANDLE);
-
-            if (!SDLVulkan.SDL_Vulkan_CreateSurface(window, Instance.instance, null, pSurface)) {
-                throw new RuntimeException("Failed to create window surface: " + SDLError.SDL_GetError());
+            createCommandPool();
+        } finally {
+            if (surface != VK_NULL_HANDLE) {
+                KHRSurface.vkDestroySurfaceKHR(Instance.instance, surface, null);
+                surface = VK_NULL_HANDLE;
             }
-
-            surface = pSurface.get(0);
+            SDLVideo.SDL_DestroyWindow(probeWindow);
         }
     }
 
-    static void createStagingBuffers() {
+    public static long createSurface(long handle) {
+        window = handle;
+        surface = createSurfaceHandle(handle);
+        return surface;
+    }
+
+    private static long createSurfaceHandle(long handle) {
+        try (MemoryStack stack = stackPush()) {
+            LongBuffer pSurface = stack.longs(VK_NULL_HANDLE);
+
+            if (!SDLVulkan.SDL_Vulkan_CreateSurface(handle, Instance.instance, null, pSurface)) {
+                throw new RuntimeException("Failed to create window surface: " + SDLError.SDL_GetError());
+            }
+
+            return pSurface.get(0);
+        }
+    }
+
+    public static void destroySurface() {
+        if (surface != VK_NULL_HANDLE) {
+            KHRSurface.vkDestroySurfaceKHR(Instance.instance, surface, null);
+            surface = VK_NULL_HANDLE;
+        }
+    }
+
+    public static VkInstance getInstance() {
+        return Instance.instance;
+    }
+
+    public static void createStagingBuffers() {
         stagingBuffers.updateFrameCount(Renderer.getFramesNum());
     }
 
@@ -148,7 +184,7 @@ public class Vulkan {
         SamplerManager.cleanUp();
         DeviceManager.destroy();
         Debug.destroyDebugUtilsMessengerEXT(Instance.instance, debugMessenger, null);
-        KHRSurface.vkDestroySurfaceKHR(Instance.instance, surface, null);
+        destroySurface();
         vkDestroyInstance(Instance.instance, null);
     }
 
@@ -201,14 +237,6 @@ public class Vulkan {
     public static void checkResult(int result, String errorMessage) {
         if (result != VK_SUCCESS) {
             throw new RuntimeException(String.format("%s: %s", errorMessage, VkResult.decode(result)));
-        }
-    }
-
-    public static void setVsync(boolean b) {
-        SwapChain swapChain = Renderer.getInstance().getSwapChain();
-        if (swapChain.isVsync() != b) {
-            Renderer.scheduleSwapChainUpdate();
-            swapChain.setVsync(b);
         }
     }
 

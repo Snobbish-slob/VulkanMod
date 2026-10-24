@@ -25,8 +25,6 @@ public class ImageUploadHelper {
             return;
         }
 
-        SpriteUpdateUtil.transitionLayouts();
-
         queue.submitCommands(this.currentCmdBuffer, useSemaphore);
         Synchronization.INSTANCE.addCommandBuffer(this.currentCmdBuffer, useSemaphore);
 

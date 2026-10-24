@@ -1,220 +1,479 @@
 package net.vulkanmod.render.engine;
 
-import com.mojang.renderpearl.api.pipeline.IndexType;
+import com.mojang.logging.LogUtils;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
-import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.commands.GpuQueryPool;
 import com.mojang.renderpearl.api.commands.RenderPass;
-import com.mojang.blaze3d.systems.ScissorState;
-import com.mojang.renderpearl.api.textures.GpuSampler;
-import com.mojang.renderpearl.api.textures.GpuTextureView;
-import com.mojang.renderpearl.api.vertex.VertexFormat;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Set;
+import com.mojang.renderpearl.api.pipeline.IndexType;
+import com.mojang.renderpearl.backend.api.BackendRenderPipeline;
+import com.mojang.renderpearl.backend.api.RenderPassBackend;
+import com.mojang.renderpearl.util.TextureViewAndSampler;
+import net.vulkanmod.vulkan.Renderer;
+import net.vulkanmod.vulkan.Vulkan;
+import net.vulkanmod.vulkan.framebuffer.Framebuffer;
+import org.jetbrains.annotations.Nullable;
+import org.lwjgl.PointerBuffer;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
+import org.lwjgl.vulkan.*;
+import org.slf4j.Logger;
+
+import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
+import java.util.Arrays;
 import java.util.function.Supplier;
 
-import net.fabricmc.api.EnvType;
-import net.fabricmc.api.Environment;
-import net.minecraft.SharedConstants;
-import net.vulkanmod.interfaces.shader.ExtendedRenderPipeline;
-import org.jetbrains.annotations.Nullable;
+import static org.lwjgl.system.MemoryStack.stackPush;
+import static org.lwjgl.vulkan.VK10.*;
 
-@Environment(EnvType.CLIENT)
-public class VkRenderPass implements RenderPass {
-    protected static final int MAX_VERTEX_BUFFERS = 1;
-    public static final boolean VALIDATION = SharedConstants.IS_RUNNING_IN_IDE;
-    private final VkCommandEncoder encoder;
-    private final boolean hasDepthTexture;
-    private boolean closed;
-    @Nullable
-    protected RenderPipeline pipeline;
-    protected final GpuBuffer[] vertexBuffers = new GpuBuffer[1];
-    @Nullable
-    protected GpuBuffer indexBuffer;
-    protected IndexType indexType = IndexType.INT;
-    private final ScissorState scissorState = new ScissorState();
-    protected final HashMap<String, GpuBufferSlice> uniforms = new HashMap<>();
-    protected final HashMap<String, TextureViewAndSampler> samplers = new HashMap<>();
-    protected final Set<String> dirtyUniforms = new HashSet<>();
-    protected int pushedDebugGroups;
+/**
+ * Backend render pass: records draws into the current frame command buffer between
+ * {@link VkCommandEncoder#createRenderPass} and {@link VkCommandEncoder#submitRenderPass}.
+ */
+public class VkRenderPass implements RenderPassBackend {
+    private static final Logger LOGGER = LogUtils.getLogger();
+    private static final int MAX_VERTEX_BUFFERS = 16;
+    private static final int MAX_PUSH_CONSTANTS = 256;
 
-    private final boolean autoManaged;
+    private final Renderer renderer;
+    private final Framebuffer framebuffer;
+    private final net.vulkanmod.vulkan.framebuffer.RenderPass vkRenderPass;
+    private final RenderPass.RenderArea renderArea;
+    private final int outputWidth;
+    private final int outputHeight;
+    private final boolean hasDepth;
+    private final Supplier<String> label;
 
-    public VkRenderPass(VkCommandEncoder commandEncoder, boolean hasDepthTexture, boolean autoManaged) {
-        this.encoder = commandEncoder;
-        this.hasDepthTexture = hasDepthTexture;
-        this.autoManaged = autoManaged;
+    private long commandBufferGeneration;
+
+    @Nullable private VkRenderPipeline pipeline;
+    private Object[] uniformValues = new Object[0];
+    private long[] boundKeys = new long[0];
+    private boolean descriptorsDirty;
+    private boolean uniformsDirty;
+    private long currentSet;
+    private IntBuffer dynamicOffsets;
+
+    private final GpuBufferSlice[] vertexBuffers = new GpuBufferSlice[MAX_VERTEX_BUFFERS];
+    @Nullable private GpuBuffer indexBuffer;
+    private IndexType indexType = IndexType.INT;
+
+    private final ByteBuffer pushConstants = MemoryUtil.memAlloc(MAX_PUSH_CONSTANTS);
+    private int pushConstantsSize;
+
+    private int pushedDebugGroups;
+
+    public VkRenderPass(Renderer renderer, Framebuffer framebuffer, net.vulkanmod.vulkan.framebuffer.RenderPass vkRenderPass,
+                        RenderPass.RenderArea renderArea, int outputWidth, int outputHeight, boolean hasDepth, Supplier<String> label) {
+        this.renderer = renderer;
+        this.framebuffer = framebuffer;
+        this.vkRenderPass = vkRenderPass;
+        this.renderArea = renderArea;
+        this.outputWidth = outputWidth;
+        this.outputHeight = outputHeight;
+        this.hasDepth = hasDepth;
+        this.label = label;
+        this.commandBufferGeneration = renderer.getCommandBufferGeneration();
+        this.dynamicOffsets = MemoryUtil.memAllocInt(1);
     }
 
-    public boolean hasDepthTexture() {
-        return this.hasDepthTexture;
+    private VkCommandBuffer commandBuffer() {
+        return Renderer.getCommandBuffer();
     }
 
     @Override
-    public void pushDebugGroup(Supplier<String> supplier) {
-        if (this.closed) {
-            throw new IllegalStateException("Can't use a closed render pass");
-        } else {
-            this.pushedDebugGroups++;
-//            this.encoder.getDevice().debugLabels().pushDebugGroup(supplier);
-        }
+    public void pushDebugGroup(Supplier<String> label) {
+        this.pushedDebugGroups++;
+        Renderer.pushDebugSection(label.get());
     }
 
     @Override
     public void popDebugGroup() {
-        if (this.closed) {
-            throw new IllegalStateException("Can't use a closed render pass");
-        } else if (this.pushedDebugGroups == 0) {
-            throw new IllegalStateException("Can't pop more debug groups than was pushed!");
-        } else {
+        if (this.pushedDebugGroups > 0) {
             this.pushedDebugGroups--;
-//            this.encoder.getDevice().debugLabels().popDebugGroup();
+            Renderer.popDebugSection();
         }
     }
 
     @Override
-    public void setPipeline(RenderPipeline renderPipeline) {
-        if (this.pipeline == null || this.pipeline != renderPipeline) {
-            this.dirtyUniforms.addAll(this.uniforms.keySet());
+    public void setPipeline(BackendRenderPipeline pipeline) {
+        if (!(pipeline instanceof VkRenderPipeline vkPipeline)) {
+            throw new IllegalArgumentException("Pipeline must be a VkRenderPipeline");
         }
 
-
-        this.pipeline = renderPipeline;
-
-        if (ExtendedRenderPipeline.of(renderPipeline).getPipeline() == null) {
-            this.encoder.getDevice().compilePipeline(renderPipeline);
+        if (this.pipeline == vkPipeline) {
+            return;
         }
+
+        this.pipeline = vkPipeline;
+
+        int uniformCount = vkPipeline.getUniformCount();
+        this.uniformValues = new Object[uniformCount];
+        this.boundKeys = new long[uniformCount];
+        Arrays.fill(this.boundKeys, Long.MIN_VALUE);
+
+        if (this.dynamicOffsets.capacity() < Math.max(1, vkPipeline.getDynamicOffsetCount())) {
+            MemoryUtil.memFree(this.dynamicOffsets);
+            this.dynamicOffsets = MemoryUtil.memAllocInt(Math.max(1, vkPipeline.getDynamicOffsetCount()));
+        }
+
+        this.descriptorsDirty = true;
+        this.uniformsDirty = true;
+        this.pushConstantsSize = 0;
+
+        bindPipeline();
+    }
+
+    private void bindPipeline() {
+        if (this.pipeline == null) {
+            return;
+        }
+
+        long handle = this.pipeline.getHandle(this.vkRenderPass.getColorFormat(), this.vkRenderPass.getDepthFormat());
+        this.renderer.bindPipelineHandle(handle);
     }
 
     @Override
-    public void bindTexture(String string, @Nullable GpuTextureView gpuTextureView,
-                            @Nullable GpuSampler gpuSampler) {
-        if (gpuSampler == null) {
-            this.samplers.remove(string);
-        } else {
-            this.samplers.put(string, new TextureViewAndSampler((VkTextureView)gpuTextureView, (VkSampler)gpuSampler));
+    public void setUniform(int index, @Nullable Object value) {
+        if (index < 0 || index >= this.uniformValues.length) {
+            return;
         }
 
-        this.dirtyUniforms.add(string);
+        this.uniformValues[index] = value;
+        this.uniformsDirty = true;
     }
 
     @Override
-    public void setUniform(String string, GpuBuffer gpuBuffer) {
-        this.uniforms.put(string, gpuBuffer.slice());
-        this.dirtyUniforms.add(string);
-    }
-
-    @Override
-    public void setUniform(String string, GpuBufferSlice gpuBufferSlice) {
-        int i = this.encoder.getDevice().getUniformOffsetAlignment();
-        if (gpuBufferSlice.offset() % i > 0) {
-            throw new IllegalArgumentException("Uniform buffer offset must be aligned to " + i);
-        } else {
-            this.uniforms.put(string, gpuBufferSlice);
-            this.dirtyUniforms.add(string);
+    public void pushConstants(ByteBuffer value) {
+        if (this.pipeline == null) {
+            throw new IllegalStateException("Must bind pipeline before pushing constants");
         }
+
+        int size = Math.min(value.remaining(), this.pipeline.getCreateInfo().pushConstantsSize());
+        size = Math.min(size, MAX_PUSH_CONSTANTS);
+
+        MemoryUtil.memCopy(MemoryUtil.memAddress(value), MemoryUtil.memAddress(this.pushConstants), size);
+        this.pushConstantsSize = size;
+
+        recordPushConstants();
+    }
+
+    private void recordPushConstants() {
+        if (this.pipeline == null || this.pushConstantsSize == 0) {
+            return;
+        }
+
+        nvkCmdPushConstants(commandBuffer(), this.pipeline.getLayout(), this.pipeline.getPushConstantStages(), 0,
+                            this.pushConstantsSize, MemoryUtil.memAddress(this.pushConstants));
     }
 
     @Override
-    public void enableScissor(int i, int j, int k, int l) {
-        this.scissorState.enable(i, j, k, l);
+    public void enableScissor(int x, int y, int width, int height) {
+        Renderer.setScissor(x, y, width, height);
     }
 
     @Override
     public void disableScissor() {
-        this.scissorState.disable();
-    }
-
-    public boolean isScissorEnabled() {
-        return this.scissorState.enabled();
-    }
-
-    public int getScissorX() {
-        return this.scissorState.x();
-    }
-
-    public int getScissorY() {
-        return this.scissorState.y();
-    }
-
-    public int getScissorWidth() {
-        return this.scissorState.width();
-    }
-
-    public int getScissorHeight() {
-        return this.scissorState.height();
-    }
-
-    public ScissorState getScissorState() { return this.scissorState; }
-
-    @Override
-    public void setVertexBuffer(int i, GpuBuffer gpuBuffer) {
-        if (i >= 0 && i < 1) {
-            this.vertexBuffers[i] = gpuBuffer;
-        } else {
-            throw new IllegalArgumentException("Vertex buffer slot is out of range: " + i);
+        if (this.renderArea != null) {
+            Renderer.setScissor(this.renderArea.x(), this.renderArea.y(), this.renderArea.width(), this.renderArea.height());
+        }
+        else {
+            Renderer.setScissor(0, 0, this.outputWidth, this.outputHeight);
         }
     }
 
     @Override
-    public void setIndexBuffer(@Nullable GpuBuffer gpuBuffer, IndexType indexType) {
-        this.indexBuffer = gpuBuffer;
+    public void setVertexBuffer(int slot, @Nullable GpuBufferSlice vertexBuffer) {
+        if (slot < 0 || slot >= MAX_VERTEX_BUFFERS) {
+            throw new IllegalArgumentException("Vertex buffer slot is out of range: " + slot);
+        }
+
+        this.vertexBuffers[slot] = vertexBuffer;
+
+        if (vertexBuffer != null) {
+            bindVertexBuffer(slot, vertexBuffer);
+        }
+    }
+
+    private void bindVertexBuffer(int slot, GpuBufferSlice vertexBuffer) {
+        try (MemoryStack stack = stackPush()) {
+            VkGpuBuffer buffer = (VkGpuBuffer) vertexBuffer.buffer();
+            vkCmdBindVertexBuffers(commandBuffer(), slot, stack.longs(buffer.getId()), stack.longs(vertexBuffer.offset()));
+        }
+    }
+
+    @Override
+    public void setIndexBuffer(GpuBuffer indexBuffer, IndexType indexType) {
+        this.indexBuffer = indexBuffer;
         this.indexType = indexType;
+
+        bindIndexBuffer();
     }
 
-    @Override
-    public void drawIndexed(int vertexOffset, int firstIndex, int vertexCount, int instanceCount) {
-        if (this.closed) {
-            throw new IllegalStateException("Can't use a closed render pass");
-        } else {
-            this.encoder.executeDraw(this, vertexOffset, firstIndex, vertexCount, this.indexType, instanceCount);
+    private void bindIndexBuffer() {
+        if (this.indexBuffer == null) {
+            return;
+        }
+
+        VkGpuBuffer buffer = (VkGpuBuffer) this.indexBuffer;
+        vkCmdBindIndexBuffer(commandBuffer(), buffer.getId(), 0L, VkConst.of(this.indexType));
+    }
+
+    /**
+     * Makes sure pipeline, descriptors and buffers are bound before a draw. The command buffer
+     * may have been flushed and restarted since the last draw, in which case all state is re-bound.
+     */
+    private void prepareDraw() {
+        if (this.pipeline == null) {
+            throw new IllegalStateException("Can't draw without a render pipeline");
+        }
+
+        long generation = this.renderer.getCommandBufferGeneration();
+        if (generation != this.commandBufferGeneration) {
+            this.commandBufferGeneration = generation;
+
+            for (int i = 0; i < MAX_VERTEX_BUFFERS; i++) {
+                if (this.vertexBuffers[i] != null) {
+                    bindVertexBuffer(i, this.vertexBuffers[i]);
+                }
+            }
+            bindIndexBuffer();
+            recordPushConstants();
+            this.descriptorsDirty = true;
+        }
+
+        bindPipeline();
+
+        if (this.uniformsDirty || this.descriptorsDirty) {
+            updateDescriptors();
         }
     }
 
-    @Override
-    public <T> void drawMultipleIndexed(
-            Collection<RenderPass.Draw<T>> collection,
-            @Nullable GpuBuffer gpuBuffer,
-            @Nullable IndexType indexType,
-            Collection<String> collection2,
-            T object
-    ) {
-        if (this.closed) {
-            throw new IllegalStateException("Can't use a closed render pass");
-        } else {
-            this.encoder.executeDrawMultiple(this, collection, gpuBuffer, indexType, collection2, object);
-        }
-    }
+    private void updateDescriptors() {
+        int uniformCount = this.pipeline.getUniformCount();
+        this.uniformsDirty = false;
 
-    @Override
-    public void draw(int vertexOffset, int vertexCount) {
-        if (this.closed) {
-            throw new IllegalStateException("Can't use a closed render pass");
-        } else {
-            this.encoder.executeDraw(this, vertexOffset, 0, vertexCount, null, 1);
+        if (uniformCount == 0) {
+            this.descriptorsDirty = false;
+            return;
         }
-    }
 
-    @Override
-    public void close() {
-        if (!this.closed) {
-            if (this.pushedDebugGroups > 0) {
-                throw new IllegalStateException("Render pass had debug groups left open!");
+        boolean needsNewSet = this.descriptorsDirty || this.currentSet == 0L;
+
+        // Check whether the bound resources changed (dynamic offsets alone don't need a new set)
+        for (int i = 0; i < uniformCount && !needsNewSet; i++) {
+            if (bindingKey(i) != this.boundKeys[i]) {
+                needsNewSet = true;
+            }
+        }
+
+        try (MemoryStack stack = stackPush()) {
+            if (needsNewSet) {
+                this.currentSet = this.pipeline.allocateDescriptorSet(Renderer.getCurrentFrame());
+                writeDescriptorSet(stack, uniformCount);
             }
 
-            this.closed = true;
-            this.encoder.finishRenderPass(!this.autoManaged);
+            int dynamicCount = this.pipeline.getDynamicOffsetCount();
+            for (int i = 0; i < uniformCount; i++) {
+                int dynamicIndex = this.pipeline.getDynamicOffsetIndex(i);
+                if (dynamicIndex >= 0) {
+                    int offset = this.uniformValues[i] instanceof GpuBufferSlice slice ? (int) slice.offset() : 0;
+                    this.dynamicOffsets.put(dynamicIndex, offset);
+                }
+            }
+
+            this.dynamicOffsets.position(0);
+            this.dynamicOffsets.limit(dynamicCount);
+
+            vkCmdBindDescriptorSets(commandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, this.pipeline.getLayout(),
+                                    0, stack.longs(this.currentSet), dynamicCount > 0 ? this.dynamicOffsets : null);
+
+            this.dynamicOffsets.limit(this.dynamicOffsets.capacity());
+        }
+
+        this.descriptorsDirty = false;
+    }
+
+    private long bindingKey(int binding) {
+        Object value = this.uniformValues[binding];
+
+        if (value instanceof GpuBufferSlice slice) {
+            long id = ((VkGpuBuffer) slice.buffer()).getId();
+            return id * 31L + slice.length();
+        }
+        else if (value instanceof TextureViewAndSampler pair) {
+            long view = ((VkTextureView) pair.view()).getImageView();
+            long sampler = ((VkSampler) pair.sampler()).getId();
+            return view * 31L + sampler;
+        }
+
+        return 0L;
+    }
+
+    private void writeDescriptorSet(MemoryStack stack, int uniformCount) {
+        VkWriteDescriptorSet.Buffer writes = VkWriteDescriptorSet.calloc(uniformCount, stack);
+        int writeCount = 0;
+
+        for (int i = 0; i < uniformCount; i++) {
+            Object value = this.uniformValues[i];
+            this.boundKeys[i] = bindingKey(i);
+
+            if (value == null) {
+                continue;
+            }
+
+            int descriptorType = this.pipeline.getDescriptorType(i);
+            VkWriteDescriptorSet write = writes.get(writeCount);
+            write.sType$Default();
+            write.dstSet(this.currentSet);
+            write.dstBinding(i);
+            write.dstArrayElement(0);
+            write.descriptorType(descriptorType);
+            write.descriptorCount(1);
+
+            switch (descriptorType) {
+                case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC -> {
+                    if (!(value instanceof GpuBufferSlice slice)) {
+                        continue;
+                    }
+
+                    VkDescriptorBufferInfo.Buffer bufferInfo = VkDescriptorBufferInfo.calloc(1, stack);
+                    bufferInfo.buffer(((VkGpuBuffer) slice.buffer()).getId());
+                    bufferInfo.offset(0L);
+                    bufferInfo.range(slice.length());
+                    write.pBufferInfo(bufferInfo);
+                }
+                case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER -> {
+                    if (!(value instanceof TextureViewAndSampler pair)) {
+                        continue;
+                    }
+
+                    VkTextureView view = (VkTextureView) pair.view();
+                    VkSampler sampler = (VkSampler) pair.sampler();
+
+                    VkDescriptorImageInfo.Buffer imageInfo = VkDescriptorImageInfo.calloc(1, stack);
+                    imageInfo.imageView(view.getImageView());
+                    imageInfo.sampler(sampler.getId());
+                    imageInfo.imageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                    write.pImageInfo(imageInfo);
+                }
+                case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER -> {
+                    if (!(value instanceof GpuBufferSlice slice)) {
+                        continue;
+                    }
+
+                    long bufferView = ((VkGpuBuffer) slice.buffer()).getBufferView(this.pipeline.getTexelFormat(i));
+                    write.pTexelBufferView(stack.longs(bufferView));
+                }
+                default -> {
+                    continue;
+                }
+            }
+
+            writeCount++;
+        }
+
+        if (writeCount > 0) {
+            writes.limit(writeCount);
+            vkUpdateDescriptorSets(Vulkan.getVkDevice(), writes, null);
         }
     }
 
-    public @Nullable RenderPipeline getPipeline() {
-        return pipeline;
+    @Override
+    public void drawIndexed(int indexCount, int instanceCount, int firstIndex, int vertexOffset, int firstInstance) {
+        prepareDraw();
+        vkCmdDrawIndexed(commandBuffer(), indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
     }
 
-    @Environment(EnvType.CLIENT)
-    protected record TextureViewAndSampler(VkTextureView view, VkSampler sampler) {
+    @Override
+    public void multiDrawIndexed(IntBuffer drawParameters, int instanceCount, int firstInstance, int drawCount) {
+        prepareDraw();
+        VkCommandBuffer commandBuffer = commandBuffer();
+
+        // Interleaved (indexCount, firstIndex, vertexOffset) triples
+        for (int i = 0; i < drawCount; i++) {
+            int base = drawParameters.position() + i * 3;
+            vkCmdDrawIndexed(commandBuffer, drawParameters.get(base), instanceCount, drawParameters.get(base + 1), drawParameters.get(base + 2), firstInstance);
+        }
+    }
+
+    @Override
+    public void multiDrawIndexed(PointerBuffer firstIndexOffsets, IntBuffer indexCounts, IntBuffer vertexOffsets, int drawCount) {
+        prepareDraw();
+        VkCommandBuffer commandBuffer = commandBuffer();
+
+        int indexSize = this.indexType.bytes;
+        for (int i = 0; i < drawCount; i++) {
+            int firstIndex = (int) (firstIndexOffsets.get(firstIndexOffsets.position() + i) / indexSize);
+            vkCmdDrawIndexed(commandBuffer, indexCounts.get(indexCounts.position() + i), 1, firstIndex, vertexOffsets.get(vertexOffsets.position() + i), 0);
+        }
+    }
+
+    @Override
+    public void drawIndexedIndirect(GpuBufferSlice commands, int drawCount) {
+        prepareDraw();
+        VkGpuBuffer buffer = (VkGpuBuffer) commands.buffer();
+        vkCmdDrawIndexedIndirect(commandBuffer(), buffer.getId(), commands.offset(), drawCount, VkDrawIndexedIndirectCommand.SIZEOF);
+    }
+
+    @Override
+    public void draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance) {
+        prepareDraw();
+        vkCmdDraw(commandBuffer(), vertexCount, instanceCount, firstVertex, firstInstance);
+    }
+
+    @Override
+    public void multiDraw(IntBuffer drawParameters, int instanceCount, int firstInstance, int drawCount) {
+        prepareDraw();
+        VkCommandBuffer commandBuffer = commandBuffer();
+
+        // Interleaved (vertexCount, firstVertex) pairs
+        for (int i = 0; i < drawCount; i++) {
+            int base = drawParameters.position() + i * 2;
+            vkCmdDraw(commandBuffer, drawParameters.get(base), instanceCount, drawParameters.get(base + 1), firstInstance);
+        }
+    }
+
+    @Override
+    public void multiDraw(IntBuffer firstVertices, IntBuffer vertexCounts, int drawCount) {
+        prepareDraw();
+        VkCommandBuffer commandBuffer = commandBuffer();
+
+        for (int i = 0; i < drawCount; i++) {
+            vkCmdDraw(commandBuffer, vertexCounts.get(vertexCounts.position() + i), 1, firstVertices.get(firstVertices.position() + i), 0);
+        }
+    }
+
+    @Override
+    public void drawIndirect(GpuBufferSlice commands, int drawCount) {
+        prepareDraw();
+        VkGpuBuffer buffer = (VkGpuBuffer) commands.buffer();
+        vkCmdDrawIndirect(commandBuffer(), buffer.getId(), commands.offset(), drawCount, VkDrawIndirectCommand.SIZEOF);
+    }
+
+    @Override
+    public void writeTimestamp(GpuQueryPool pool, int index) {
+        ((VkQueryPool) pool).writeTimestamp(commandBuffer(), index);
+    }
+
+    public Framebuffer getFramebuffer() {
+        return this.framebuffer;
+    }
+
+    public boolean hasDepth() {
+        return this.hasDepth;
+    }
+
+    /**
+     * Called by the encoder when the pass is submitted.
+     */
+    void finish() {
+        while (this.pushedDebugGroups > 0) {
+            popDebugGroup();
+        }
+
+        MemoryUtil.memFree(this.pushConstants);
+        MemoryUtil.memFree(this.dynamicOffsets);
     }
 }
-

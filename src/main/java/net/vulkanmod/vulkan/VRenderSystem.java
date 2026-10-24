@@ -1,12 +1,10 @@
 package net.vulkanmod.vulkan;
 
-import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.platform.Window;
 
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.fog.FogData;
-import net.vulkanmod.render.engine.VkGpuBuffer;
 import net.vulkanmod.vulkan.device.DeviceManager;
 import net.vulkanmod.vulkan.shader.PipelineState;
 import net.vulkanmod.vulkan.util.ColorUtil;
@@ -24,20 +22,20 @@ import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 
 public abstract class VRenderSystem {
-    private static final float DEFAULT_DEPTH_VALUE = 1.0f;
-
-    private static long window;
+    // Minecraft 26.3 uses reversed depth: far plane at 0.0, near plane at 1.0
+    private static final float DEFAULT_DEPTH_VALUE = 0.0f;
 
     public static boolean depthTest = true;
     public static boolean depthMask = true;
-    public static int depthFun = VK_COMPARE_OP_LESS_OR_EQUAL;
+    public static int depthFun = VK_COMPARE_OP_GREATER_OR_EQUAL;
     public static int topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     public static int polygonMode = VK_POLYGON_MODE_FILL;
     public static boolean canSetLineWidth = false;
 
     public static int colorMask = PipelineState.ColorMask.getColorMask(true, true, true, true);
 
-    public static int frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    // The game renders with a non-flipped viewport, which mirrors the winding compared to OpenGL
+    public static int frontFace = VK_FRONT_FACE_CLOCKWISE;
     public static int cullMode = VK_CULL_MODE_BACK_BIT;
 
     public static boolean logicOp = false;
@@ -74,8 +72,6 @@ public abstract class VRenderSystem {
     private static int currentTime;
 
     public static void initRenderer() {
-        Vulkan.initVulkan(window);
-
         setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
@@ -120,10 +116,6 @@ public abstract class VRenderSystem {
         texelSize.putFloat(4, 1.0f / height);
     }
 
-    public static void setWindow(long window) {
-        VRenderSystem.window = window;
-    }
-
     public static ByteBuffer getModelOffset() {
         return modelOffset.buffer;
     }
@@ -144,14 +136,6 @@ public abstract class VRenderSystem {
 
     public static void applyProjectionMatrix(Matrix4f mat) {
         mat.get(projectionMatrix.buffer.asFloatBuffer());
-    }
-
-    public static void applyProjectionMatrix(GpuBufferSlice bufferSlice) {
-        long ptr = ((VkGpuBuffer) bufferSlice.buffer()).getBuffer().getDataPtr();
-        ByteBuffer byteBuffer = MemoryUtil.memByteBuffer(ptr + bufferSlice.offset(), (int) bufferSlice.length());
-        Matrix4f matrix4f = new Matrix4f().set(byteBuffer);
-
-        matrix4f.get(projectionMatrix.buffer.asFloatBuffer());
     }
 
     public static void calculateMVP() {

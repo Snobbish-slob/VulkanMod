@@ -1,68 +1,73 @@
 package net.vulkanmod.render.engine;
 
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
-
-import java.nio.ByteBuffer;
-import java.util.function.Supplier;
-import net.fabricmc.api.EnvType;
-import net.fabricmc.api.Environment;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import it.unimi.dsi.fastutil.ints.Int2LongArrayMap;
+import net.vulkanmod.vulkan.Vulkan;
 import net.vulkanmod.vulkan.memory.MemoryManager;
 import net.vulkanmod.vulkan.memory.MemoryType;
 import net.vulkanmod.vulkan.memory.MemoryTypes;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
+import org.lwjgl.vulkan.VkBufferViewCreateInfo;
+
+import java.nio.ByteBuffer;
+import java.nio.LongBuffer;
+import java.util.function.Supplier;
 
 import static org.lwjgl.vulkan.VK10.*;
 
-@Environment(EnvType.CLIENT)
-public class VkGpuBuffer extends GpuBuffer {
-    protected boolean closed;
-    @Nullable protected final Supplier<String> label;
+/**
+ * Backend buffer: wraps a VulkanMod {@link Buffer}.
+ */
+public class VkGpuBuffer implements GpuBuffer {
+    private final int usage;
+    private final long size;
+    @Nullable private final Supplier<String> label;
+    private final Buffer buffer;
+    private final boolean ownsBuffer;
 
-    Buffer buffer;
+    private final Int2LongArrayMap bufferViews = new Int2LongArrayMap(2);
+    private boolean closed;
 
-    int offset;
+    public VkGpuBuffer(@Nullable Supplier<String> label, @GpuBuffer.Usage int usage, long size) {
+        this.usage = usage;
+        this.size = size;
+        this.label = label;
 
-    protected VkGpuBuffer(VkDebugLabel debugLabel, @Nullable Supplier<String> supplier, int usage, long size) {
-        super(usage, size);
-        this.label = supplier;
+        MemoryType memoryType = VkConst.isMappable(usage) ? MemoryTypes.HOST_MEM : MemoryTypes.GPU_MEM;
 
-        int vkUsage = 0;
-        if ((usage & GpuBuffer.USAGE_COPY_SRC) != 0) {
-            vkUsage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        }
-        if ((usage & GpuBuffer.USAGE_COPY_DST) != 0) {
-            vkUsage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        }
-        if ((usage & GpuBuffer.USAGE_VERTEX) != 0) {
-            vkUsage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        }
-        if ((usage & GpuBuffer.USAGE_INDEX) != 0) {
-            vkUsage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-        }
-        if ((usage & GpuBuffer.USAGE_UNIFORM) != 0) {
-            vkUsage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        }
-        if ((usage & GpuBuffer.USAGE_UNIFORM_TEXEL_BUFFER) != 0) {
-            vkUsage |= VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-        }
-
-        boolean mappable = (usage & GpuBuffer.USAGE_MAP_READ) != 0 |
-                           (usage & GpuBuffer.USAGE_MAP_WRITE) != 0 |
-                           (usage & GpuBuffer.USAGE_HINT_CLIENT_STORAGE) != 0;
-
-        MemoryType memoryType =  mappable ? MemoryTypes.HOST_MEM : MemoryTypes.GPU_MEM;
-
-        String label = supplier != null ? supplier.get() : null;
-        this.buffer = new Buffer(label, vkUsage, memoryType);
-        this.buffer.createBuffer(this.size());
+        String name = label != null ? label.get() : null;
+        this.buffer = new Buffer(name, VkConst.bufferUsage(usage), memoryType);
+        this.buffer.createBuffer(size);
+        this.ownsBuffer = true;
     }
 
-    protected VkGpuBuffer(Buffer buffer) {
-        super(buffer.usage, buffer.getBufferSize());
-
+    private VkGpuBuffer(Buffer buffer, int usage) {
+        this.usage = usage;
+        this.size = buffer.getBufferSize();
         this.label = null;
         this.buffer = buffer;
+        this.ownsBuffer = false;
+    }
+
+    /**
+     * Wraps an existing buffer without taking ownership.
+     */
+    public static VkGpuBuffer from(Buffer buffer, @GpuBuffer.Usage int usage) {
+        return new VkGpuBuffer(buffer, usage);
+    }
+
+    @Override
+    public long size() {
+        return this.size;
+    }
+
+    @Override
+    public int usage() {
+        return this.usage;
     }
 
     @Override
@@ -71,59 +76,83 @@ public class VkGpuBuffer extends GpuBuffer {
     }
 
     @Override
+    public GpuBufferSlice.MappedView map(long offset, long length, boolean read, boolean write) {
+        if (this.closed) {
+            throw new IllegalStateException("Buffer already closed");
+        }
+        if (!read && !write) {
+            throw new IllegalArgumentException("At least read or write must be true");
+        }
+        if (read && (this.usage & USAGE_MAP_READ) == 0) {
+            throw new IllegalStateException("Buffer is not readable");
+        }
+        if (write && (this.usage & USAGE_MAP_WRITE) == 0) {
+            throw new IllegalStateException("Buffer is not writable");
+        }
+        if (offset + length > this.size) {
+            throw new IllegalArgumentException("Cannot map more data than this buffer can hold");
+        }
+        if (this.buffer.getDataPtr() == 0L) {
+            throw new IllegalStateException("Buffer memory is not host visible");
+        }
+
+        ByteBuffer data = MemoryUtil.memByteBuffer(this.buffer.getDataPtr() + offset, (int) length);
+        return new GpuBufferSlice.MappedView(new GpuBufferSlice(this, offset, length), data, () -> {});
+    }
+
+    @Override
     public void close() {
         if (!this.closed) {
             this.closed = true;
 
-            MemoryManager.getInstance().addToFreeable(this.buffer);
+            if (!this.bufferViews.isEmpty()) {
+                final long[] views = this.bufferViews.values().toLongArray();
+                MemoryManager.getInstance().addFrameOp(() -> {
+                    for (long view : views) {
+                        vkDestroyBufferView(Vulkan.getVkDevice(), view, null);
+                    }
+                });
+                this.bufferViews.clear();
+            }
+
+            if (this.ownsBuffer) {
+                MemoryManager.getInstance().addToFreeable(this.buffer);
+            }
         }
     }
 
     public Buffer getBuffer() {
-        return buffer;
+        return this.buffer;
     }
 
-    public void setOffset(int offset) {
-        this.offset = offset;
+    public long getId() {
+        return this.buffer.getId();
     }
 
-    public static int bufferUsageToGlEnum(int i) {
-        boolean stream = (i & 4) != 0;
-        // Draw
-        if ((i & 2) != 0) {
-            return stream ? 35040 : 35044;
-        }
-        // Read
-        else if ((i & 1) != 0) {
-            return stream ? 35041 : 35045;
-        } else {
-            return 35044;
-        }
-    }
-
-    public static VkGpuBuffer from(Buffer buffer) {
-        return new VkGpuBuffer(buffer);
-    }
-
-    @Environment(EnvType.CLIENT)
-    public static class MappedView implements GpuBuffer.MappedView {
-        private final int target;
-        private final ByteBuffer data;
-
-        protected MappedView(int i, ByteBuffer byteBuffer) {
-            this.target = i;
-            this.data = byteBuffer;
+    /**
+     * Buffer view used for uniform texel buffer bindings.
+     */
+    public long getBufferView(int vkFormat) {
+        long view = this.bufferViews.get(vkFormat);
+        if (view != 0L) {
+            return view;
         }
 
-        @Override
-        public ByteBuffer data() {
-            return this.data;
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkBufferViewCreateInfo createInfo = VkBufferViewCreateInfo.calloc(stack);
+            createInfo.sType$Default();
+            createInfo.buffer(this.buffer.getId());
+            createInfo.format(vkFormat);
+            createInfo.offset(0);
+            createInfo.range(VK_WHOLE_SIZE);
+
+            LongBuffer pView = stack.mallocLong(1);
+            Vulkan.checkResult(vkCreateBufferView(Vulkan.getVkDevice(), createInfo, null, pView), "Failed to create buffer view");
+
+            view = pView.get(0);
         }
 
-        @Override
-        public void close() {
-//            GlStateManager._glUnmapBuffer(this.target);
-        }
+        this.bufferViews.put(vkFormat, view);
+        return view;
     }
 }
-

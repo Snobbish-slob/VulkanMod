@@ -1,24 +1,40 @@
 package net.vulkanmod.render.engine;
 
-import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
-import it.unimi.dsi.fastutil.ints.Int2ReferenceMap;
-import it.unimi.dsi.fastutil.ints.Int2ReferenceOpenHashMap;
-import org.jetbrains.annotations.Nullable;
+import net.vulkanmod.vulkan.Vulkan;
+import net.vulkanmod.vulkan.memory.MemoryManager;
+import net.vulkanmod.vulkan.texture.VulkanImage;
+import org.lwjgl.vulkan.VK10;
 
-public class VkTextureView extends GpuTextureView {
+/**
+ * Backend texture view: a Vulkan image view covering a mip range of a {@link VkGpuTexture}.
+ */
+public class VkTextureView implements GpuTextureView {
+    private final VkGpuTexture texture;
+    private final int baseMipLevel;
+    private final int mipLevels;
+    private final long imageView;
+    private final boolean ownsView;
     private boolean closed;
 
-    private final Int2ReferenceMap<VkFbo> fboCache = new Int2ReferenceOpenHashMap<>();
+    public VkTextureView(VkGpuTexture texture, int baseMipLevel, int mipLevels) {
+        this.texture = texture;
+        this.baseMipLevel = baseMipLevel;
+        this.mipLevels = mipLevels;
 
-    protected VkTextureView(VkGpuTexture gpuTexture, int baseMipLevel, int mipLevels) {
-        super(gpuTexture, baseMipLevel, mipLevels);
-        gpuTexture.addViews();
-    }
+        VulkanImage image = texture.getVulkanImage();
 
-    public VkFbo getFbo(@Nullable GpuTexture depthAttachment) {
-        int depthAttachmentId = depthAttachment == null ? 0 : ((VkGpuTexture)depthAttachment).id;
-        return this.fboCache.computeIfAbsent(depthAttachmentId, j -> new VkFbo(this, (VkGpuTexture) depthAttachment));
+        if (baseMipLevel == 0 && mipLevels == image.mipLevels) {
+            this.imageView = image.getImageView();
+            this.ownsView = false;
+        }
+        else {
+            this.imageView = VulkanImage.createImageView(image.getId(), image.viewType, image.format, image.aspect,
+                                                         image.arrayLayers, baseMipLevel, mipLevels);
+            this.ownsView = true;
+        }
+
+        texture.addView();
     }
 
     @Override
@@ -27,18 +43,48 @@ public class VkTextureView extends GpuTextureView {
     }
 
     @Override
+    public VkGpuTexture texture() {
+        return this.texture;
+    }
+
+    @Override
+    public int baseMipLevel() {
+        return this.baseMipLevel;
+    }
+
+    @Override
+    public int mipLevels() {
+        return this.mipLevels;
+    }
+
+    @Override
+    public int getWidth(int mipLevel) {
+        return this.texture.getWidth(this.baseMipLevel + mipLevel);
+    }
+
+    @Override
+    public int getHeight(int mipLevel) {
+        return this.texture.getHeight(this.baseMipLevel + mipLevel);
+    }
+
+    public long getImageView() {
+        return this.imageView;
+    }
+
+    public VulkanImage getVulkanImage() {
+        return this.texture.getVulkanImage();
+    }
+
+    @Override
     public void close() {
         if (!this.closed) {
             this.closed = true;
-            this.texture().removeViews();
-        }
+            this.texture.removeView();
 
-        for (VkFbo fbo : this.fboCache.values()) {
-            fbo.close();
+            if (this.ownsView) {
+                final long view = this.imageView;
+                MemoryManager.getInstance().addFrameOp(() -> VK10.vkDestroyImageView(Vulkan.getVkDevice(), view, null));
+            }
         }
-    }
-
-    public VkGpuTexture texture() {
-        return (VkGpuTexture) super.texture();
     }
 }

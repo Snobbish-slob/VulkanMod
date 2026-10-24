@@ -263,7 +263,7 @@ public class VulkanImage {
                                            arrayLayer, mipLevel, width, height, xOffset, yOffset,
                                            srcOffset, unpackRowLength, height);
 
-            ImageUtil.imageTransferMemoryBarrier(stack, commandBuffer, this, mipLevel);
+            readOnlyLayout(stack, commandBuffer);
         }
     }
 
@@ -276,7 +276,7 @@ public class VulkanImage {
             return;
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            if (Renderer.getInstance().getBoundRenderPass() != null) {
+            if (Renderer.getInstance().getBoundRenderPass() != null || !Renderer.isRecording()) {
                 CommandPool.CommandBuffer commandBuffer = ImageUploadHelper.INSTANCE.getOrStartCommandBuffer();
                 VkCommandBuffer vkCommandBuffer = commandBuffer.getHandle();
 
@@ -332,6 +332,10 @@ public class VulkanImage {
                 srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
                 sourceStage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
             }
+            case VK_IMAGE_LAYOUT_GENERAL -> {
+                srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+                sourceStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            }
             default -> throw new RuntimeException("Unexpected value:" + image.currentLayout);
         }
 
@@ -358,6 +362,10 @@ public class VulkanImage {
             }
             case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR -> {
                 destinationStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+            }
+            case VK_IMAGE_LAYOUT_GENERAL -> {
+                dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+                destinationStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
             }
             default -> throw new RuntimeException("Unexpected value:" + newLayout);
         }
@@ -576,8 +584,15 @@ public class VulkanImage {
             return this;
         }
 
+        public Builder setFormatSize(int formatSize) {
+            this.formatSize = formatSize;
+            return this;
+        }
+
         public VulkanImage createVulkanImage() {
-            this.formatSize = formatSize(this.format);
+            if (this.formatSize == 0) {
+                this.formatSize = formatSize(this.format);
+            }
 
             return VulkanImage.createTextureImage(this);
         }
@@ -588,9 +603,10 @@ public class VulkanImage {
                      VK_FORMAT_D32_SFLOAT, VK_FORMAT_D24_UNORM_S8_UINT,
                      VK_FORMAT_R8G8B8A8_UINT, VK_FORMAT_R8G8B8A8_SINT,
                      VK_FORMAT_R32_SFLOAT, VK_FORMAT_B10G11R11_UFLOAT_PACK32 -> 4;
-                case VK_FORMAT_R16_SFLOAT -> 2;
-                case VK_FORMAT_R8_UNORM -> 1;
-                case VK_FORMAT_R16G16B16A16_SFLOAT -> 8;
+                case VK_FORMAT_R16_SFLOAT, VK_FORMAT_D16_UNORM, VK_FORMAT_R8G8_UNORM -> 2;
+                case VK_FORMAT_R8_UNORM, VK_FORMAT_R8_SINT, VK_FORMAT_R8_UINT, VK_FORMAT_S8_UINT -> 1;
+                case VK_FORMAT_R16G16B16A16_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT -> 8;
+                case VK_FORMAT_R32G32B32A32_SFLOAT -> 16;
 
                 default -> throw new IllegalArgumentException(String.format("Unxepcted format: %s", format));
             };

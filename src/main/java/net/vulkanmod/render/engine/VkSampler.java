@@ -3,21 +3,21 @@ package net.vulkanmod.render.engine;
 import com.mojang.renderpearl.api.textures.AddressMode;
 import com.mojang.renderpearl.api.textures.FilterMode;
 import com.mojang.renderpearl.api.textures.GpuSampler;
-import net.fabricmc.api.EnvType;
-import net.fabricmc.api.Environment;
 import net.vulkanmod.vulkan.texture.SamplerManager;
-import org.lwjgl.vulkan.VK10;
 
 import java.util.OptionalDouble;
 
-@Environment(EnvType.CLIENT)
-public class VkSampler extends GpuSampler {
+/**
+ * Backend sampler. Samplers are shared through {@link SamplerManager}, so closing one does not
+ * destroy the Vulkan object.
+ */
+public class VkSampler implements GpuSampler {
     private final AddressMode addressModeU;
     private final AddressMode addressModeV;
     private final FilterMode minFilter;
     private final FilterMode magFilter;
     private final int maxAnisotropy;
-    private final float maxLod;
+    private final OptionalDouble maxLod;
     private boolean closed;
 
     private final long id;
@@ -29,15 +29,15 @@ public class VkSampler extends GpuSampler {
         this.minFilter = minFilter;
         this.magFilter = magFilter;
         this.maxAnisotropy = maxAnisotropy;
-        this.maxLod =  maxLod.isPresent() ? (byte) maxLod.getAsDouble() : 1000.0f;
+        this.maxLod = maxLod;
+
+        float vkMaxLod = maxLod.isPresent() ? (float) maxLod.getAsDouble() : 1000.0f;
 
         this.id = SamplerManager.getSampler(VkConst.of(addressModeU), VkConst.of(addressModeV),
                                             VkConst.of(minFilter), VkConst.of(magFilter),
-                                            VK10.VK_SAMPLER_MIPMAP_MODE_LINEAR, this.maxLod,
+                                            VkConst.mipmapMode(minFilter), vkMaxLod,
                                             maxAnisotropy > 1, maxAnisotropy, -1);
     }
-
-
 
     public long getId() {
         return this.id;
@@ -70,16 +70,15 @@ public class VkSampler extends GpuSampler {
 
     @Override
     public OptionalDouble getMaxLod() {
-        return null;
+        return this.maxLod;
     }
 
     @Override
     public void close() {
-        if (!this.closed) {
-            this.closed = true;
-        }
+        this.closed = true;
     }
 
+    @Override
     public boolean isClosed() {
         return this.closed;
     }

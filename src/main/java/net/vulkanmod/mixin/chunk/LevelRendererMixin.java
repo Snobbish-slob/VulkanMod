@@ -1,186 +1,172 @@
 package net.vulkanmod.mixin.chunk;
 
-import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.renderpearl.api.textures.GpuSampler;
-import com.mojang.blaze3d.vertex.PoseStack;
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.Camera;
-import net.minecraft.client.DeltaTracker;
-import net.minecraft.client.Minecraft;
+import net.minecraft.client.Options;
+import net.minecraft.client.color.block.BlockColors;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.renderer.*;
+import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.SectionOcclusionGraph;
+import net.minecraft.client.renderer.ShaderManager;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
-import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
-import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.state.level.ChunkLoadingRenderState;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
+import net.minecraft.client.renderer.texture.TextureManager;
+import net.minecraft.client.resources.model.ModelManager;
+import net.minecraft.client.resources.model.sprite.AtlasManager;
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.level.BlockDestructionProgress;
-import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.phys.Vec3;
 import net.vulkanmod.render.chunk.WorldRenderer;
 import net.vulkanmod.render.profiling.Profiler;
 import net.vulkanmod.render.vertex.TerrainRenderType;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
-import org.joml.Vector4f;
-import org.spongepowered.asm.mixin.*;
+import org.spongepowered.asm.mixin.Final;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Overwrite;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import java.util.SortedSet;
-
+/**
+ * Replaces the vanilla section renderer with VulkanMod's chunk renderer.
+ * <p>
+ * Since 26.3 the game-thread side (dirty sections, frustum, block entity extraction) lives in
+ * {@code LevelExtractor} and is hooked by {@link LevelExtractorM}; this mixin covers the render side.
+ */
 @Mixin(LevelRenderer.class)
 public abstract class LevelRendererMixin {
-    @Shadow @Final private Long2ObjectMap<SortedSet<BlockDestructionProgress>> destructionProgress;
+    @Shadow @Final private LevelRenderState levelRenderState;
+    @Shadow @Final private GameRenderer gameRenderer;
+
+    @Shadow public abstract net.minecraft.client.renderer.CloudRenderer cloudRenderer();
+
+    @Shadow public abstract void clearVisibleSections();
 
     @Unique private WorldRenderer worldRenderer;
 
-    @Unique double camX, camY, camZ;
-    @Unique Matrix4f modelView, projection;
+    @Unique private final Matrix4f modelView = new Matrix4f();
+    @Unique private final Matrix4f projection = new Matrix4f();
 
     @Inject(method = "<init>", at = @At("RETURN"))
-    private void init(Minecraft minecraft, EntityRenderDispatcher entityRenderDispatcher,
-                      BlockEntityRenderDispatcher blockEntityRenderDispatcher, RenderBuffers renderBuffers,
-                      LevelRenderState levelRenderState, FeatureRenderDispatcher featureRenderDispatcher,
-                      CallbackInfo ci) {
-        this.worldRenderer = WorldRenderer.init(entityRenderDispatcher, blockEntityRenderDispatcher, renderBuffers, levelRenderState, featureRenderDispatcher);
-    }
-
-    @Inject(method = "setLevel", at = @At("RETURN"))
-    private void setLevel(ClientLevel clientLevel, CallbackInfo ci) {
-        this.worldRenderer.setLevel(clientLevel);
-    }
-
-    @Inject(method = "allChanged", at = @At("RETURN"))
-    private void onAllChanged(CallbackInfo ci) {
-        this.worldRenderer.allChanged();
-    }
-
-    @Inject(method = "extractVisibleBlockEntities", at = @At("HEAD"), cancellable = true)
-    private void onExtractVisibleBlockEntities(Camera camera, float partialTick, LevelRenderState levelRenderState,
-                                               CallbackInfo ci) {
-        this.worldRenderer.setPartialTick(partialTick);
-
-        ci.cancel();
-    }
-
-    @Inject(method = "submitBlockEntities", at = @At(value = "RETURN"), cancellable = true)
-    private void onSubmitBlockEntities(PoseStack poseStack, LevelRenderState levelRenderState,
-                                     SubmitNodeStorage submitNodeStorage, CallbackInfo ci) {
-        this.worldRenderer.renderBlockEntities(poseStack, levelRenderState, submitNodeStorage, this.destructionProgress);
-
-        ci.cancel();
+    private void init(EntityRenderDispatcher entityRenderDispatcher, BlockEntityRenderDispatcher blockEntityRenderDispatcher,
+                      ModelManager modelManager, TextureManager textureManager, AtlasManager atlasManager,
+                      ShaderManager shaderManager, GameRenderer gameRenderer, int width, int height, CallbackInfo ci) {
+        this.worldRenderer = WorldRenderer.init(entityRenderDispatcher, blockEntityRenderDispatcher, gameRenderer.renderBuffers(),
+                                                gameRenderer.gameRenderState().levelRenderState, gameRenderer.featureRenderDispatcher());
     }
 
     /**
-     * @author
-     * @reason
+     * @author VulkanMod
+     * @reason The vanilla view area and section dispatcher are never created; VulkanMod keeps
+     * its own section grid (rebuilt from {@code LevelExtractor.allChanged}).
      */
     @Overwrite
-    private void cullTerrain(Camera camera, Frustum frustum, boolean spectator) {
-        // TODO: port capture frustum
-        this.worldRenderer.setupRenderer(camera, frustum, false, spectator);
+    public void invalidateCompiledGeometry(ClientLevel level, Options options, Camera camera, BlockColors blockColors) {
+        this.cloudRenderer().markForRebuild();
+        LeavesBlock.setCutoutLeaves(options.cutoutLeaves().get());
+        this.clearVisibleSections();
     }
 
     /**
-     * @author
-     * @reason
+     * @author VulkanMod
+     * @reason No vanilla section data to release.
      */
     @Overwrite
-    public boolean isSectionCompiledAndVisible(BlockPos blockPos) {
-        return this.worldRenderer.isSectionCompiled(blockPos);
+    public void resetLevelRenderData() {
+        this.clearVisibleSections();
     }
 
-    @Inject(method = "renderLevel", at = @At("HEAD"))
-    private void updateMatrices(GraphicsResourceAllocator graphicsResourceAllocator, DeltaTracker deltaTracker,
-                                boolean bl, Camera camera, Matrix4f modelView, Matrix4f projection, Matrix4f matrix4f,
-                                GpuBufferSlice gpuBufferSlice, Vector4f vector4f, boolean bl2, CallbackInfo ci) {
-        this.modelView = modelView;
-        this.projection = projection;
-    }
-
+    /**
+     * @author VulkanMod
+     * @reason Terrain draws are issued directly by VulkanMod in {@link #renderSectionLayer}.
+     */
     @Overwrite
-    private ChunkSectionsToRender prepareChunkRenders(Matrix4fc matrix4fc, double camX, double camY, double camZ) {
-        this.camX = camX;
-        this.camY = camY;
-        this.camZ = camZ;
-
+    public ChunkSectionsToRender prepareChunkRenders(Matrix4fc modelViewMatrix, boolean respectTranslucentOrder) {
+        this.modelView.set(modelViewMatrix);
+        this.projection.set(this.levelRenderState.cameraRenderState.projectionMatrix);
         return null;
     }
 
-    @Redirect(method = "method_62214", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;renderGroup(Lnet/minecraft/client/renderer/chunk/ChunkSectionLayerGroup;Lcom/mojang/renderpearl/api/textures/GpuSampler;)V"))
-    private void renderSectionLayer(ChunkSectionsToRender instance, ChunkSectionLayerGroup chunkSectionLayerGroup, GpuSampler gpuSampler) {
-        if (chunkSectionLayerGroup == ChunkSectionLayerGroup.OPAQUE) {
-            Profiler profiler = Profiler.getMainProfiler();
+    /**
+     * @author VulkanMod
+     * @reason Terrain draws are issued directly by VulkanMod in {@link #renderSectionLayer}.
+     */
+    @Overwrite
+    public ChunkSectionsToRender prepareChunkRendersIndirect(Matrix4fc modelViewMatrix, boolean respectTranslucentOrder) {
+        return this.prepareChunkRenders(modelViewMatrix, respectTranslucentOrder);
+    }
+
+    @Redirect(method = {"executeSolid", "executeClassicTransparency"},
+              at = @At(value = "INVOKE",
+                       target = "Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;renderGroup(Lnet/minecraft/client/renderer/chunk/ChunkSectionLayerGroup;Lcom/mojang/renderpearl/api/commands/RenderPass;Lcom/mojang/renderpearl/api/textures/GpuSampler;Lcom/mojang/renderpearl/api/textures/GpuTextureView;Z)V"))
+    private void renderSectionLayer(ChunkSectionsToRender instance, ChunkSectionLayerGroup group, RenderPass renderPass,
+                                    GpuSampler sampler, GpuTextureView atlas, boolean wireframe) {
+        Vec3 cameraPos = this.levelRenderState.cameraRenderState.pos;
+        double camX = cameraPos.x();
+        double camY = cameraPos.y();
+        double camZ = cameraPos.z();
+
+        Profiler profiler = Profiler.getMainProfiler();
+
+        if (group == ChunkSectionLayerGroup.OPAQUE) {
             profiler.push("Opaque_terrain");
 
-            this.worldRenderer.renderSectionLayer(TerrainRenderType.SOLID, camX, camY, camZ, modelView, projection);
-            this.worldRenderer.renderSectionLayer(TerrainRenderType.CUTOUT, camX, camY, camZ, modelView, projection);
-        }
-        else if (chunkSectionLayerGroup == ChunkSectionLayerGroup.TRANSLUCENT) {
-            Profiler profiler = Profiler.getMainProfiler();
+            this.worldRenderer.renderSectionLayer(TerrainRenderType.SOLID, camX, camY, camZ, this.modelView, this.projection);
+            this.worldRenderer.renderSectionLayer(TerrainRenderType.CUTOUT, camX, camY, camZ, this.modelView, this.projection);
+
             profiler.pop();
+        }
+        else if (group == ChunkSectionLayerGroup.TRANSLUCENT) {
             profiler.push("Translucent_terrain");
 
-            this.worldRenderer.renderSectionLayer(TerrainRenderType.TRANSLUCENT, camX, camY, camZ, modelView, projection);
+            this.worldRenderer.renderSectionLayer(TerrainRenderType.TRANSLUCENT, camX, camY, camZ, this.modelView, this.projection);
 
             profiler.pop();
         }
-
     }
 
     /**
-     * @author
-     * @reason
+     * @author VulkanMod
+     * @reason Sections are compiled by VulkanMod's task dispatcher.
      */
     @Overwrite
-    public void onChunkReadyToRender(ChunkPos chunkPos) {
+    private void compileSections(CameraRenderState camera) {
+    }
+
+    @Redirect(method = "render",
+              at = @At(value = "INVOKE",
+                       target = "Lnet/minecraft/client/renderer/SectionOcclusionGraph;update(Lnet/minecraft/client/renderer/state/level/CameraRenderState;ILnet/minecraft/client/renderer/state/level/ChunkLoadingRenderState;)V"))
+    private void skipOcclusionGraphUpdate(SectionOcclusionGraph instance, CameraRenderState camera, int fov, ChunkLoadingRenderState chunkLoadingRenderState) {
+        // The vanilla occlusion graph has no view area; VulkanMod's section graph is updated in LevelExtractorM
     }
 
     /**
-     * @author
-     * @reason
+     * @author VulkanMod
+     * @reason Visibility comes from VulkanMod's section grid.
      */
     @Overwrite
-    private void setSectionDirty(int x, int y, int z, boolean flag) {
-        this.worldRenderer.setSectionDirty(x, y, z, flag);
+    public boolean isSectionCompiledAndVisible(BlockPos blockPos, long chunkFadeDuration) {
+        return this.worldRenderer.isSectionCompiled(blockPos);
     }
 
     /**
-     * @author
-     * @reason
-     */
-    @Overwrite
-    public String getSectionStatistics() {
-        return this.worldRenderer.getChunkStatistics();
-    }
-
-    /**
-     * @author
-     * @reason
+     * @author VulkanMod
+     * @reason Completion state comes from VulkanMod's task dispatcher.
      */
     @Overwrite
     public boolean hasRenderedAllSections() {
         return !this.worldRenderer.graphNeedsUpdate() && this.worldRenderer.getTaskDispatcher().isIdle();
     }
-
-    /**
-     * @author
-     * @reason
-     */
-    @Overwrite
-    public int countRenderedSections() {
-        return this.worldRenderer.getVisibleSectionsCount();
-    }
-
-    @Redirect(method = "addWeatherPass", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/GameRenderer;getDepthFar()F"))
-    private float getRenderDistanceZFar(GameRenderer instance) {
-        return instance.getRenderDistance() * 4F;
-    }
-
 }

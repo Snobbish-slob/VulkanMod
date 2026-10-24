@@ -1,45 +1,75 @@
 package net.vulkanmod.render.engine;
 
-import com.mojang.renderpearl.backend.opengl.GlStateManager;
-import com.mojang.renderpearl.backend.opengl.GlTexture;
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.api.textures.GpuTexture;
-import com.mojang.blaze3d.textures.TextureFormat;
-import it.unimi.dsi.fastutil.ints.*;
-import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
-import net.fabricmc.api.EnvType;
-import net.fabricmc.api.Environment;
-import net.vulkanmod.gl.VkGlTexture;
 import net.vulkanmod.vulkan.texture.VulkanImage;
-import org.jetbrains.annotations.Nullable;
-import org.lwjgl.vulkan.VK10;
 
-@Environment(EnvType.CLIENT)
-public class VkGpuTexture extends GlTexture {
-    private static final Reference2ReferenceOpenHashMap<GlTexture, VkGpuTexture> glToVkMap = new Reference2ReferenceOpenHashMap<>();
+/**
+ * Backend texture: wraps a {@link VulkanImage}.
+ * <p>
+ * Images rest in {@code SHADER_READ_ONLY_OPTIMAL} layout whenever they are not being written to,
+ * so they can be bound as samplers at any time without an explicit transition.
+ */
+public class VkGpuTexture implements GpuTexture {
+    private final String label;
+    private final int usage;
+    private final GpuFormat format;
+    private final int width;
+    private final int height;
+    private final int depthOrLayers;
+    private final int mipLevels;
+    private final VulkanImage image;
+    private final boolean ownsImage;
 
-    protected VkGlTexture glTexture;
-    protected final int id;
-    private final Int2ReferenceMap<VkFbo> fboCache = new Int2ReferenceOpenHashMap<>();
-    protected boolean closed;
+    private int views;
+    private boolean closed;
 
-    VkTextureView fboView;
-    boolean needsClear = false;
-    int clearColor = 0;
-    float depthClearValue = 1.0f;
-
-    protected VkGpuTexture(int usage, String string, TextureFormat textureFormat, int width, int height, int layers, int mipLevel, int id, VkGlTexture glTexture) {
-        super(usage, string, textureFormat, width, height, layers, mipLevel, id);
-        this.id = id;
-        this.glTexture = glTexture;
+    public VkGpuTexture(String label, int usage, GpuFormat format, int width, int height, int depthOrLayers, int mipLevels,
+                        VulkanImage image, boolean ownsImage) {
+        this.label = label;
+        this.usage = usage;
+        this.format = format;
+        this.width = width;
+        this.height = height;
+        this.depthOrLayers = depthOrLayers;
+        this.mipLevels = mipLevels;
+        this.image = image;
+        this.ownsImage = ownsImage;
     }
 
     @Override
-    public void close() {
-        if (!this.closed) {
-            this.closed = true;
-            GlStateManager._deleteTexture(this.id);
-        }
+    public int getWidth(int mipLevel) {
+        return Math.max(1, this.width >> mipLevel);
+    }
+
+    @Override
+    public int getHeight(int mipLevel) {
+        return Math.max(1, this.height >> mipLevel);
+    }
+
+    @Override
+    public int getDepthOrLayers() {
+        return this.depthOrLayers;
+    }
+
+    @Override
+    public int getMipLevels() {
+        return this.mipLevels;
+    }
+
+    @Override
+    public GpuFormat getFormat() {
+        return this.format;
+    }
+
+    @Override
+    public int usage() {
+        return this.usage;
+    }
+
+    @Override
+    public String getLabel() {
+        return this.label;
     }
 
     @Override
@@ -47,81 +77,30 @@ public class VkGpuTexture extends GlTexture {
         return this.closed;
     }
 
-    public int glId() {
-        return this.id;
-    }
+    @Override
+    public void close() {
+        if (!this.closed) {
+            this.closed = true;
 
-    public void setClearColor(int clearColor) {
-        this.needsClear = true;
-        this.clearColor = clearColor;
-    }
-
-    public void setDepthClearValue(float depthClearValue) {
-        this.needsClear = true;
-        this.depthClearValue = depthClearValue;
-    }
-
-    public boolean needsClear() {
-        return needsClear;
-    }
-
-    public VkFbo getFbo(@Nullable GpuTexture depthAttachment) {
-        int depthAttachmentId = depthAttachment == null ? 0 : ((VkGpuTexture)depthAttachment).id;
-
-        if (this.fboView == null) {
-            VkGpuDevice gpuDevice = (VkGpuDevice) RenderSystem.getDevice();
-            this.fboView = (VkTextureView) gpuDevice.createTextureView(this, 0, this.getMipLevels());
+            if (this.ownsImage) {
+                this.image.free();
+            }
         }
-
-        return this.fboCache.computeIfAbsent(depthAttachmentId, j -> new VkFbo(this.fboView, (VkGpuTexture) depthAttachment));
     }
 
     public VulkanImage getVulkanImage() {
-        return glTexture.getVulkanImage();
+        return this.image;
     }
 
-    public static VkGpuTexture fromGlTexture(GlTexture glTexture) {
-        return glToVkMap.computeIfAbsent(glTexture, glTexture1 -> {
-            var name = glTexture.getLabel();
-            int id = glTexture.glId();
-            VkGlTexture vglTexture = VkGlTexture.getTexture(id);
-            VkGpuTexture gpuTexture = new VkGpuTexture(0, name, glTexture.getFormat(),
-                                                       glTexture.getWidth(0), glTexture.getHeight(0),
-                                                       1, glTexture.getMipLevels(),
-                                                       glTexture.glId(), vglTexture);
-
-            return gpuTexture;
-        });
+    public int getVkFormat() {
+        return this.image.format;
     }
 
-    public static TextureFormat textureFormat(int format) {
-        return switch (format) {
-            case VK10.VK_FORMAT_R8G8B8A8_UNORM, VK10.VK_FORMAT_B8G8R8A8_UNORM, VK10.VK_FORMAT_R8G8B8A8_SRGB -> TextureFormat.RGBA8;
-            case VK10.VK_FORMAT_R8_UNORM -> TextureFormat.RED8;
-            case VK10.VK_FORMAT_D32_SFLOAT -> TextureFormat.DEPTH32;
-            default -> null;
-        };
+    void addView() {
+        this.views++;
     }
 
-    public static int vkFormat(TextureFormat textureFormat) {
-        return switch (textureFormat) {
-            case RGBA8 -> VK10.VK_FORMAT_R8G8B8A8_UNORM;
-            case RED8 -> VK10.VK_FORMAT_R8_UNORM;
-            case RED8I -> VK10.VK_FORMAT_R8_SINT;
-            case DEPTH32 -> VK10.VK_FORMAT_D32_SFLOAT;
-        };
-    }
-
-    public static int vkImageViewType(int usage) {
-        int viewType;
-        if ((usage & GpuTexture.USAGE_CUBEMAP_COMPATIBLE) != 0) {
-            viewType = VK10.VK_IMAGE_VIEW_TYPE_CUBE;
-        }
-        else {
-            viewType = VK10.VK_IMAGE_VIEW_TYPE_2D;
-        }
-
-        return viewType;
+    void removeView() {
+        this.views--;
     }
 }
-
