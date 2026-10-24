@@ -13,7 +13,10 @@ import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.renderpearl.backend.api.CommandEncoderBackend;
 import com.mojang.renderpearl.backend.api.RenderPassBackend;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.Vulkan;
 import net.vulkanmod.vulkan.framebuffer.Framebuffer;
@@ -51,10 +54,20 @@ public class VkCommandEncoder implements CommandEncoderBackend {
 
     @Nullable private VkRenderPass currentRenderPass;
 
+    // Transfer batching: consecutive uploads share one barrier before the first copy and one
+    // after the last, instead of a full barrier pair around every copy (see flushTransfers)
+    private boolean transferBatchOpen;
+    private final ObjectArrayList<VulkanImage> batchImages = new ObjectArrayList<>();
+    private final Long2ObjectOpenHashMap<LongArrayList> batchBufferWrites = new Long2ObjectOpenHashMap<>();
+    private final Long2ObjectOpenHashMap<IntArrayList> batchImageWrites = new Long2ObjectOpenHashMap<>();
+    private final Runnable preSubmitHook = this::flushTransfers;
+
     public VkCommandEncoder(VkGpuDevice device) {
         this.device = device;
         this.renderer = Renderer.getInstance();
         this.transientMemory = new VkTransientMemory(this.renderer);
+
+        this.renderer.addPreSubmitHook(this.preSubmitHook);
     }
 
     private VkCommandBuffer commandBuffer() {
@@ -70,6 +83,7 @@ public class VkCommandEncoder implements CommandEncoderBackend {
 
     @Override
     public void submit() {
+        flushTransfers();
         this.renderer.submit();
     }
 
@@ -160,6 +174,8 @@ public class VkCommandEncoder implements CommandEncoderBackend {
             beginInfo.setClearDepth((float) depthAttachment.clearValue().getAsDouble());
         }
 
+        flushTransfers();
+
         Renderer.pushDebugSection(descriptor.label().get());
         this.renderer.beginRenderPass(renderPass, framebuffer, beginInfo);
 
@@ -227,6 +243,7 @@ public class VkCommandEncoder implements CommandEncoderBackend {
     public void clearColorTexture(GpuTexture colorTexture, Vector4fc clearColor) {
         checkNotInRenderPass();
         VkCommandBuffer commandBuffer = commandBuffer();
+        flushTransfers();
 
         try (MemoryStack stack = stackPush()) {
             clearColorImage(stack, commandBuffer, ((VkGpuTexture) colorTexture).getVulkanImage(), clearColor);
@@ -237,6 +254,7 @@ public class VkCommandEncoder implements CommandEncoderBackend {
     public void clearColorAndDepthTextures(GpuTexture colorTexture, Vector4fc clearColor, GpuTexture depthTexture, double clearDepth) {
         checkNotInRenderPass();
         VkCommandBuffer commandBuffer = commandBuffer();
+        flushTransfers();
 
         try (MemoryStack stack = stackPush()) {
             clearColorImage(stack, commandBuffer, ((VkGpuTexture) colorTexture).getVulkanImage(), clearColor);
@@ -249,6 +267,7 @@ public class VkCommandEncoder implements CommandEncoderBackend {
                                            int regionX, int regionY, int regionWidth, int regionHeight, int mipLevel) {
         checkNotInRenderPass();
         this.renderer.ensureRecording();
+        flushTransfers();
 
         VulkanImage colorImage = ((VkGpuTexture) colorTexture).getVulkanImage();
         VulkanImage depthImage = ((VkGpuTexture) depthTexture).getVulkanImage();
@@ -281,6 +300,7 @@ public class VkCommandEncoder implements CommandEncoderBackend {
     public void clearDepthTexture(GpuTexture depthTexture, double clearDepth) {
         checkNotInRenderPass();
         VkCommandBuffer commandBuffer = commandBuffer();
+        flushTransfers();
 
         try (MemoryStack stack = stackPush()) {
             clearDepthImage(stack, commandBuffer, ((VkGpuTexture) depthTexture).getVulkanImage(), clearDepth);
@@ -308,24 +328,153 @@ public class VkCommandEncoder implements CommandEncoderBackend {
         return stagingBuffer;
     }
 
-    private static void transferBarrier(MemoryStack stack, VkCommandBuffer commandBuffer, boolean beforeTransfer) {
+    /**
+     * Opens the transfer batch if needed: one barrier makes everything recorded so far (draws,
+     * attachment writes, earlier transfers) visible to the transfer stage. Later copies in the
+     * same batch need no barrier between them unless they touch the same memory, which
+     * {@link #noteBufferWrite} and {@link #noteImageWrite} check for.
+     */
+    private void beginTransfer(MemoryStack stack, VkCommandBuffer commandBuffer) {
+        if (this.transferBatchOpen) {
+            return;
+        }
+
         VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack);
         barrier.sType$Default();
+        barrier.srcAccessMask(VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
+        barrier.dstAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT);
 
-        if (beforeTransfer) {
-            barrier.srcAccessMask(VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
-            barrier.dstAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT);
+        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, barrier, null, null);
 
-            vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 0, barrier, null, null);
+        this.transferBatchOpen = true;
+    }
+
+    /**
+     * Orders the copies recorded so far in the batch before the ones that follow. Only needed
+     * when a copy overlaps memory another copy of the same batch wrote.
+     */
+    private void transferToTransferBarrier(MemoryStack stack, VkCommandBuffer commandBuffer) {
+        VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack);
+        barrier.sType$Default();
+        barrier.srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT);
+        barrier.dstAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT);
+
+        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, barrier, null, null);
+
+        this.batchBufferWrites.clear();
+        this.batchImageWrites.clear();
+    }
+
+    private static boolean overlaps(long start0, long end0, long start1, long end1) {
+        return start0 < end1 && start1 < end0;
+    }
+
+    private boolean bufferRangeWrittenInBatch(long bufferId, long offset, long size) {
+        LongArrayList ranges = this.batchBufferWrites.get(bufferId);
+        if (ranges == null) {
+            return false;
         }
-        else {
+
+        for (int i = 0; i < ranges.size(); i += 2) {
+            if (overlaps(offset, offset + size, ranges.getLong(i), ranges.getLong(i + 1))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void noteBufferRead(MemoryStack stack, VkCommandBuffer commandBuffer, long bufferId, long offset, long size) {
+        if (bufferRangeWrittenInBatch(bufferId, offset, size)) {
+            transferToTransferBarrier(stack, commandBuffer);
+        }
+    }
+
+    private void noteBufferWrite(MemoryStack stack, VkCommandBuffer commandBuffer, long bufferId, long offset, long size) {
+        if (bufferRangeWrittenInBatch(bufferId, offset, size)) {
+            transferToTransferBarrier(stack, commandBuffer);
+        }
+
+        LongArrayList ranges = this.batchBufferWrites.get(bufferId);
+        if (ranges == null) {
+            ranges = new LongArrayList();
+            this.batchBufferWrites.put(bufferId, ranges);
+        }
+        ranges.add(offset);
+        ranges.add(offset + size);
+    }
+
+    /**
+     * Prepares an image region for a transfer write and leaves the image in the transfer
+     * layout; it is moved back to the shader read layout when the batch is flushed.
+     */
+    private void noteImageWrite(MemoryStack stack, VkCommandBuffer commandBuffer, VulkanImage image,
+                                int mipLevel, int layer, int x, int y, int width, int height) {
+        IntArrayList rects = this.batchImageWrites.get(image.getId());
+
+        if (rects != null) {
+            for (int i = 0; i < rects.size(); i += 6) {
+                if (rects.getInt(i) == mipLevel && rects.getInt(i + 1) == layer
+                    && overlaps(x, x + width, rects.getInt(i + 2), rects.getInt(i + 2) + rects.getInt(i + 4))
+                    && overlaps(y, y + height, rects.getInt(i + 3), rects.getInt(i + 3) + rects.getInt(i + 5))) {
+                    transferToTransferBarrier(stack, commandBuffer);
+                    rects = null;
+                    break;
+                }
+            }
+        }
+
+        if (rects == null) {
+            rects = new IntArrayList();
+            this.batchImageWrites.put(image.getId(), rects);
+        }
+        rects.add(mipLevel);
+        rects.add(layer);
+        rects.add(x);
+        rects.add(y);
+        rects.add(width);
+        rects.add(height);
+
+        if (image.getCurrentLayout() != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+            image.transitionImageLayout(stack, commandBuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        }
+        if (!this.batchImages.contains(image)) {
+            this.batchImages.add(image);
+        }
+    }
+
+    /**
+     * Closes the transfer batch: makes the transfer writes visible to every later stage and
+     * returns the written images to the shader read layout. Called before anything that could
+     * consume the transferred data (render passes, clears, image copies, presenting) and
+     * before the frame is submitted.
+     */
+    public void flushTransfers() {
+        if (!this.transferBatchOpen) {
+            return;
+        }
+
+        VkCommandBuffer commandBuffer = commandBuffer();
+
+        try (MemoryStack stack = stackPush()) {
+            VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack);
+            barrier.sType$Default();
             barrier.srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT);
             barrier.dstAccessMask(VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
 
             vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                                  0, barrier, null, null);
+
+            for (VulkanImage image : this.batchImages) {
+                image.transitionImageLayout(stack, commandBuffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            }
         }
+
+        this.batchImages.clear();
+        this.batchBufferWrites.clear();
+        this.batchImageWrites.clear();
+        this.transferBatchOpen = false;
     }
 
     @Override
@@ -343,7 +492,8 @@ public class VkCommandEncoder implements CommandEncoderBackend {
         long srcOffset = stagingBuffer.getOffset();
 
         try (MemoryStack stack = stackPush()) {
-            transferBarrier(stack, commandBuffer, true);
+            beginTransfer(stack, commandBuffer);
+            noteBufferWrite(stack, commandBuffer, buffer.getId(), destination.offset(), size);
 
             VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack);
             copyRegion.size(size);
@@ -351,8 +501,6 @@ public class VkCommandEncoder implements CommandEncoderBackend {
             copyRegion.dstOffset(destination.offset());
 
             vkCmdCopyBuffer(commandBuffer, stagingBuffer.getId(), buffer.getId(), copyRegion);
-
-            transferBarrier(stack, commandBuffer, false);
         }
     }
 
@@ -365,7 +513,9 @@ public class VkCommandEncoder implements CommandEncoderBackend {
         VkGpuBuffer dstBuffer = (VkGpuBuffer) target.buffer();
 
         try (MemoryStack stack = stackPush()) {
-            transferBarrier(stack, commandBuffer, true);
+            beginTransfer(stack, commandBuffer);
+            noteBufferRead(stack, commandBuffer, srcBuffer.getId(), source.offset(), source.length());
+            noteBufferWrite(stack, commandBuffer, dstBuffer.getId(), target.offset(), source.length());
 
             VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack);
             copyRegion.size(source.length());
@@ -373,8 +523,6 @@ public class VkCommandEncoder implements CommandEncoderBackend {
             copyRegion.dstOffset(target.offset());
 
             vkCmdCopyBuffer(commandBuffer, srcBuffer.getId(), dstBuffer.getId(), copyRegion);
-
-            transferBarrier(stack, commandBuffer, false);
         }
     }
 
@@ -411,12 +559,11 @@ public class VkCommandEncoder implements CommandEncoderBackend {
         long srcOffset = stagingBuffer.getOffset();
 
         try (MemoryStack stack = stackPush()) {
-            image.transitionImageLayout(stack, commandBuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            beginTransfer(stack, commandBuffer);
+            noteImageWrite(stack, commandBuffer, image, mipLevel, depthOrLayer, destX, destY, width, height);
 
             copyBufferToImage(stack, commandBuffer, stagingBuffer.getId(), srcOffset, width, height, image,
                               mipLevel, depthOrLayer, destX, destY, width, height);
-
-            image.transitionImageLayout(stack, commandBuffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         }
     }
 
@@ -434,13 +581,12 @@ public class VkCommandEncoder implements CommandEncoderBackend {
         long bufferOffset = source.offset() + ((long) sourceY * sourceWidth + sourceX) * blockSize;
 
         try (MemoryStack stack = stackPush()) {
-            transferBarrier(stack, commandBuffer, true);
-            image.transitionImageLayout(stack, commandBuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            beginTransfer(stack, commandBuffer);
+            noteBufferRead(stack, commandBuffer, buffer.getId(), bufferOffset, (long) sourceWidth * sourceHeight * blockSize);
+            noteImageWrite(stack, commandBuffer, image, mipLevel, arrayLayer, destinationX, destinationY, copyWidth, copyHeight);
 
             copyBufferToImage(stack, commandBuffer, buffer.getId(), bufferOffset, sourceWidth, sourceHeight, image,
                               mipLevel, arrayLayer, destinationX, destinationY, copyWidth, copyHeight);
-
-            image.transitionImageLayout(stack, commandBuffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         }
     }
 
@@ -454,6 +600,7 @@ public class VkCommandEncoder implements CommandEncoderBackend {
                                     int x, int y, int width, int height) {
         checkNotInRenderPass();
         VkCommandBuffer commandBuffer = commandBuffer();
+        flushTransfers();
 
         VulkanImage image = ((VkGpuTexture) source).getVulkanImage();
         VkGpuBuffer buffer = (VkGpuBuffer) destination;
@@ -495,6 +642,7 @@ public class VkCommandEncoder implements CommandEncoderBackend {
                                      int sourceX, int sourceY, int width, int height) {
         checkNotInRenderPass();
         VkCommandBuffer commandBuffer = commandBuffer();
+        flushTransfers();
 
         VulkanImage srcImage = ((VkGpuTexture) source).getVulkanImage();
         VulkanImage dstImage = ((VkGpuTexture) destination).getVulkanImage();
@@ -534,6 +682,7 @@ public class VkCommandEncoder implements CommandEncoderBackend {
     }
 
     public void destroy() {
+        this.renderer.removePreSubmitHook(this.preSubmitHook);
         this.transientMemory.destroy();
     }
 }

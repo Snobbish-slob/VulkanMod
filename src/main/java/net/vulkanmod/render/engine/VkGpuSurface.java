@@ -178,6 +178,9 @@ public class VkGpuSurface implements GpuSurfaceBackend, Renderer.FrameListener {
 
         this.renderer.ensureRecording();
         this.renderer.endRenderPass();
+        if (commandEncoder instanceof VkCommandEncoder vkEncoder) {
+            vkEncoder.flushTransfers();
+        }
 
         VkCommandBuffer commandBuffer = Renderer.getCommandBuffer();
         VulkanImage srcImage = ((VkTextureView) textureView).getVulkanImage();

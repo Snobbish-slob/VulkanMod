@@ -116,6 +116,7 @@ public class Renderer {
 
     private final List<Runnable> onResizeCallbacks = new ObjectArrayList<>();
     private final List<FrameListener> frameListeners = new ObjectArrayList<>();
+    private final List<Runnable> preSubmitHooks = new ObjectArrayList<>();
 
     public Renderer() {
         device = Vulkan.getVkDevice();
@@ -212,6 +213,18 @@ public class Renderer {
         }
     }
 
+    /**
+     * Registers work to record right before the frame's command buffer is submitted, while
+     * recording is still possible (e.g. closing a pending transfer batch).
+     */
+    public void addPreSubmitHook(Runnable hook) {
+        this.preSubmitHooks.add(hook);
+    }
+
+    public void removePreSubmitHook(Runnable hook) {
+        this.preSubmitHooks.remove(hook);
+    }
+
     public void addFrameListener(FrameListener listener) {
         this.frameListeners.add(listener);
     }
@@ -303,6 +316,10 @@ public class Renderer {
 
         Profiler p = Profiler.getMainProfiler();
         p.push("End_rendering");
+
+        for (int i = 0; i < this.preSubmitHooks.size(); i++) {
+            this.preSubmitHooks.get(i).run();
+        }
 
         endRenderPass(currentCmdBuffer);
 
