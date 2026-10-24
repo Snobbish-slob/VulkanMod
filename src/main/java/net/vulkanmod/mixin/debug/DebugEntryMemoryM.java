@@ -22,7 +22,7 @@ public abstract class DebugEntryMemoryM {
     @Shadow @Final private static Identifier GROUP;
 
     @Shadow
-    protected static long bytesToMegabytes(long l) {
+    protected static long bytesToMebibytes(long l) {
         return 0;
     }
 
@@ -38,9 +38,9 @@ public abstract class DebugEntryMemoryM {
         debugScreenDisplayer.addToGroup(
                 GROUP,
                 List.of(
-                        String.format(Locale.ROOT, "Mem: %2d%% %03d/%03dMB", o * 100L / l, bytesToMegabytes(o), bytesToMegabytes(l)),
-//                        String.format(Locale.ROOT, "Allocation rate: %03dMB/s", bytesToMegabytes(this.allocationRateCalculator.bytesAllocatedPerSecond(o))),
-                        String.format(Locale.ROOT, "Allocated: %2d%% %03dMB", m * 100L / l, bytesToMegabytes(m)),
+                        String.format(Locale.ROOT, "Mem: %2d%% %03d/%03dMB", o * 100L / l, bytesToMebibytes(o), bytesToMebibytes(l)),
+//                        String.format(Locale.ROOT, "Allocation rate: %03dMB/s", bytesToMebibytes(this.allocationRateCalculator.bytesAllocatedPerSecond(o))),
+                        String.format(Locale.ROOT, "Allocated: %2d%% %03dMB", m * 100L / l, bytesToMebibytes(m)),
                         String.format("Off-heap: " + getOffHeapMemory() + "MB"),
                         "NativeMemory: %dMB".formatted(MemoryManager.getInstance().getNativeMemoryMB()),
                         "DeviceMemory: %dMB".formatted(MemoryManager.getInstance().getAllocatedDeviceMemoryMB())
@@ -50,6 +50,6 @@ public abstract class DebugEntryMemoryM {
     }
 
     private long getOffHeapMemory() {
-        return bytesToMegabytes(ManagementFactory.getMemoryMXBean().getNonHeapMemoryUsage().getUsed());
+        return bytesToMebibytes(ManagementFactory.getMemoryMXBean().getNonHeapMemoryUsage().getUsed());
     }
 }

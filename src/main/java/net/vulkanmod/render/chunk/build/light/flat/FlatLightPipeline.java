@@ -47,7 +47,7 @@ public class FlatLightPipeline implements LightPipeline {
         }
 
         Arrays.fill(out.lm, lightmap);
-        Arrays.fill(out.br, this.lightCache.getRegion().getShade(lightFace, shade));
+        Arrays.fill(out.br, shade ? this.lightCache.getRegion().cardinalLighting().byFace(lightFace) : 1.0f);
     }
 
     private int getLightmap(BlockPos pos, Direction face) {

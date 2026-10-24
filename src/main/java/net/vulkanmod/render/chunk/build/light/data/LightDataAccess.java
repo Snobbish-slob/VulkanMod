@@ -3,7 +3,7 @@ package net.vulkanmod.render.chunk.build.light.data;
 import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.BlockAndTintGetter;
+import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -82,13 +82,13 @@ public abstract class LightDataAccess {
         BlockPos pos = this.pos.set(x, y, z);
         BlockState state = region.getBlockState(pos);
 
-        boolean em = state.emissiveRendering(region, pos);
+        boolean em = state.emissiveRendering();
 
         boolean op;
         if (this.subBlockLighting)
             op = state.canOcclude();
         else
-            op = state.isViewBlocking(region, pos) && state.getLightBlock() != 0;
+            op = state.canOcclude() && !state.isLightPermeable();
 
         boolean fo = state.isSolidRender();
         boolean fc = state.isCollisionShapeFullBlock(region, pos);
@@ -108,7 +108,7 @@ public abstract class LightDataAccess {
                 sl = region.getBrightness(LightLayer.SKY, pos);
             }
             else {
-                int light = LevelRenderer.getLightColor(LevelRenderer.BrightnessGetter.DEFAULT, region, state, pos);
+                int light = LightCoordsUtil.getLightCoords(LightCoordsUtil.BrightnessGetter.DEFAULT, region, state, pos);
                 bl = LightCoordsUtil.block(light);
                 sl = LightCoordsUtil.sky(light);
             }

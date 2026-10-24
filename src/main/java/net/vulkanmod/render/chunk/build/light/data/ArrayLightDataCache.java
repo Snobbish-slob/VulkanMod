@@ -2,7 +2,7 @@ package net.vulkanmod.render.chunk.build.light.data;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
-import net.minecraft.world.level.BlockAndTintGetter;
+import net.minecraft.client.renderer.block.BlockAndTintGetter;
 
 import java.util.Arrays;
 

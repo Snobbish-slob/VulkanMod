@@ -4,7 +4,7 @@ import com.google.common.base.Strings;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.vulkanmod.Initializer;
 import net.vulkanmod.config.gui.render.GuiRenderer;
@@ -54,7 +54,7 @@ public class ProfilerOverlay {
 //        node = v >= 0 && v <= 15 ? v-1 : node;
     }
 
-    public void render(GuiGraphics guiGraphics) {
+    public void render(GuiGraphicsExtractor guiGraphics) {
         GuiRenderer.guiGraphics = guiGraphics;
 
         List<String> infoList = this.buildInfo();

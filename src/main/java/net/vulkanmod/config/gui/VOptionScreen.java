@@ -4,7 +4,7 @@ import com.google.common.collect.Lists;
 import net.minecraft.ChatFormatting;
 import net.minecraft.util.Util;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.VideoSettingsScreen;
@@ -275,7 +275,7 @@ public class VOptionScreen extends Screen {
         int y0 = this.height - VGuiConstants.WIDGET_HEIGHT - 7;
 
         VButtonWidget doneButton = new VButtonWidget(x0, y0, buttonWidth, VGuiConstants.WIDGET_HEIGHT,
-                CommonComponents.GUI_DONE, button -> Minecraft.getInstance().setScreen(this.parent));
+                CommonComponents.GUI_DONE, button -> Minecraft.getInstance().gui.setScreen(this.parent));
 
         buttonWidth = Minecraft.getInstance().font.width(Component.translatable("vulkanmod.options.buttons.apply")) + 2 * padding;
         x0 -= (buttonWidth + VGuiConstants.WIDGET_MARGIN);
@@ -347,11 +347,11 @@ public class VOptionScreen extends Screen {
 
     @Override
     public void onClose() {
-        Minecraft.getInstance().setScreen(this.parent);
+        Minecraft.getInstance().gui.setScreen(this.parent);
     }
 
     @Override
-    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float delta) {
+    public void extractRenderState(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, float delta) {
         GuiRenderer.guiGraphics = guiGraphics;
         VRenderSystem.enableBlend();
 
@@ -509,7 +509,7 @@ public class VOptionScreen extends Screen {
         if (!this.searchField.focused
                 && keyEvent.key() == GLFW.GLFW_KEY_P
                 && keyEvent.hasShiftDown()) {
-            Minecraft.getInstance().setScreen(new VideoSettingsScreen(this, Minecraft.getInstance(), Minecraft.getInstance().options));
+            Minecraft.getInstance().gui.setScreen(new VideoSettingsScreen(this, Minecraft.getInstance(), Minecraft.getInstance().options));
 
             return false;
         }

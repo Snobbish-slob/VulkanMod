@@ -1,5 +1,7 @@
 package net.vulkanmod.config.gui;
 
+import net.vulkanmod.vulkan.VRenderSystem;
+
 import com.mojang.renderpearl.backend.opengl.GlStateManager;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.Minecraft;
@@ -213,7 +215,7 @@ public class VOptionList extends GuiElement {
         // Scroll bar
         int maxScroll = this.getMaxScroll();
         if (maxScroll > 0) {
-            GlStateManager._enableBlend();
+            VRenderSystem.enableBlend();
 
             int height = this.getHeight();
             int totalLength = this.getTotalLength();

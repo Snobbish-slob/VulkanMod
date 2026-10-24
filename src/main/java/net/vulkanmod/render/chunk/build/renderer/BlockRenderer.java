@@ -4,11 +4,10 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.ShadeMode;
 import net.fabricmc.fabric.api.util.TriState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.ItemBlockRenderTypes;
-import net.minecraft.client.renderer.block.model.BlockStateModel;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.BlockAndTintGetter;
+import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.SingleThreadedRandomSource;
 import net.minecraft.world.phys.Vec3;
@@ -31,7 +30,6 @@ public class BlockRenderer extends AbstractBlockRenderContext {
     private Vector3f pos;
 
     private BuilderResources resources;
-    private TerrainBuilder terrainBuilder;
 
     final boolean backFaceCulling = Initializer.CONFIG.backFaceCulling;
 
@@ -54,12 +52,6 @@ public class BlockRenderer extends AbstractBlockRenderContext {
         this.blockState = blockState;
         this.random.setSeed(blockState.getSeed(blockPos));
 
-        TerrainRenderType renderType = TerrainRenderType.get(ItemBlockRenderTypes.getChunkRenderType(blockState));
-        renderType = TerrainRenderType.getRemapped(renderType);
-        this.renderType = renderType;
-        this.terrainBuilder = this.resources.builderPack.builder(renderType);
-        this.terrainBuilder.setBlockAttributes(blockState);
-
         BlockStateModel model = Minecraft.getInstance().getModelManager().getBlockStateModelSet().get(blockState);
 
         BlockAndTintGetter renderRegion = this.renderRegion;
@@ -71,37 +63,22 @@ public class BlockRenderer extends AbstractBlockRenderContext {
         model.emitQuads(this.getEmitter(), renderRegion, blockPos, blockState, this.random, this::isFaceCulled);
     }
 
-    @Override
-    protected VertexConsumer getVertexConsumer(ChunkSectionLayer layer) {
-        return null;
-    }
-
     protected void endRenderQuad(MutableQuadViewImpl quad) {
         final TriState aoMode = quad.ambientOcclusion();
         final boolean ao = this.useAO && (aoMode == TriState.TRUE || (aoMode == TriState.DEFAULT && this.defaultAO));
         final boolean emissive = quad.emissive();
         final boolean vanillaShade = quad.shadeMode() == ShadeMode.VANILLA;
 
-        TerrainBuilder terrainBuilder = getBufferBuilder(quad.renderLayer());
+        TerrainRenderType renderType = TerrainRenderType.getRemapped(TerrainRenderType.get(quad.chunkLayer()));
+        this.renderType = renderType;
+        TerrainBuilder terrainBuilder = this.resources.builderPack.builder(renderType);
+        terrainBuilder.setBlockAttributes(this.blockState);
 
         LightPipeline lightPipeline = ao ? this.smoothLightPipeline : this.flatLightPipeline;
 
         tintQuad(quad);
         shadeQuad(quad, lightPipeline, emissive, vanillaShade);
         bufferQuad(terrainBuilder, this.pos, quad, this.quadLightData);
-    }
-
-    private TerrainBuilder getBufferBuilder(ChunkSectionLayer layer) {
-        if (layer == null) {
-            return this.terrainBuilder;
-        } else {
-            TerrainRenderType renderType = TerrainRenderType.get(layer);
-            renderType = TerrainRenderType.getRemapped(renderType);
-            TerrainBuilder bufferBuilder = this.resources.builderPack.builder(renderType);
-            bufferBuilder.setBlockAttributes(this.blockState);
-
-            return bufferBuilder;
-        }
     }
 
     public void bufferQuad(TerrainBuilder terrainBuilder, Vector3f pos, ModelQuadView quad, QuadLightData quadLightData) {

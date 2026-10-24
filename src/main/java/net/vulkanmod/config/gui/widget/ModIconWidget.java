@@ -38,7 +38,7 @@ public class ModIconWidget extends VAbstractWidget {
         int iconSize = this.height - 4;
         int iconX = this.x + 4;
         int iconY = this.y + (height - iconSize) / 2;
-        GuiRenderer.guiGraphics.blit(RenderPipelines.GUI_TEXTURED, icon, iconX, iconY, 0f, 0f, iconSize, iconSize, iconSize, iconSize);
+        GuiRenderer.guiGraphics.blit(RenderPipelines.GUI_TEXTURED, icon, iconX, iconY, 0f, 0f, iconSize, iconSize, iconSize, iconSize, -1);
         Font textRenderer = Minecraft.getInstance().font;
 
         int size = this.height;

@@ -2,6 +2,11 @@ package net.vulkanmod;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.renderer.v1.Renderer;
+import net.fabricmc.fabric.api.client.renderer.v1.render.submit.ExtendedBlockModelSubmit;
+import net.fabricmc.fabric.api.client.renderer.v1.render.submit.ExtendedItemSubmit;
+import net.fabricmc.fabric.api.client.rendering.v1.FeatureRendererRegistry;
+import net.vulkanmod.render.chunk.build.frapi.render.ExtendedBlockModelFeatureRenderer;
+import net.vulkanmod.render.chunk.build.frapi.render.ExtendedItemFeatureRenderer;
 import net.fabricmc.loader.api.FabricLoader;
 import net.vulkanmod.config.Config;
 import net.vulkanmod.config.Platform;
@@ -36,6 +41,8 @@ public class Initializer implements ClientModInitializer {
 		Platform.init();
 
 		Renderer.register(VulkanModRenderer.INSTANCE);
+		FeatureRendererRegistry.register(ExtendedBlockModelSubmit.TYPE, ExtendedBlockModelFeatureRenderer::new);
+		FeatureRendererRegistry.register(ExtendedItemSubmit.TYPE, ExtendedItemFeatureRenderer::new);
 
 		UpdateChecker.checkForUpdates();
 	}

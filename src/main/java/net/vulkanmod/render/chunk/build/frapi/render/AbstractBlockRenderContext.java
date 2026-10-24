@@ -1,47 +1,48 @@
+/*
+ * Copyright (c) 2016, 2017, 2018, 2019 FabricMC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package net.vulkanmod.render.chunk.build.frapi.render;
 
-import net.minecraft.util.LightCoordsUtil;
-import com.mojang.blaze3d.vertex.VertexConsumer;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2ByteLinkedOpenHashMap;
-import net.fabricmc.fabric.api.client.renderer.v1.Renderer;
-import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadAtlas;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
-import net.fabricmc.fabric.api.client.renderer.v1.model.ModelHelper;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.color.block.BlockColor;
 import net.minecraft.client.color.block.BlockColors;
-import net.minecraft.client.renderer.ItemBlockRenderTypes;
-import net.minecraft.client.renderer.block.model.BlockModelPart;
-import net.minecraft.client.renderer.block.model.BlockStateModel;
-import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import net.minecraft.client.color.block.BlockTintSource;
+import net.minecraft.client.renderer.block.BlockAndTintGetter;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.shapes.BooleanOp;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
-import net.vulkanmod.interfaces.color.BlockColorsExtended;
-import net.vulkanmod.render.chunk.build.color.BlockColorRegistry;
-import net.vulkanmod.render.chunk.build.frapi.VulkanModRenderer;
-import net.vulkanmod.render.chunk.build.light.LightPipeline;
-import net.vulkanmod.render.chunk.build.light.data.QuadLightData;
-import org.jetbrains.annotations.Nullable;
 import net.vulkanmod.render.chunk.build.frapi.helper.ColorHelper;
 import net.vulkanmod.render.chunk.build.frapi.mesh.EncodingFormat;
 import net.vulkanmod.render.chunk.build.frapi.mesh.MutableQuadViewImpl;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.world.level.block.state.BlockState;
+import net.vulkanmod.render.chunk.build.light.LightPipeline;
+import net.vulkanmod.render.chunk.build.light.data.QuadLightData;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.function.Predicate;
-import java.util.function.Supplier;
 
 public abstract class AbstractBlockRenderContext extends AbstractRenderContext {
-	private static final Renderer RENDERER = VulkanModRenderer.INSTANCE;
-
-	protected final BlockColorRegistry blockColorRegistry;
-
 	private final MutableQuadViewImpl editorQuad = new MutableQuadViewImpl() {
 		{
 			data = new int[EncodingFormat.TOTAL_STRIDE];
@@ -52,13 +53,11 @@ public abstract class AbstractBlockRenderContext extends AbstractRenderContext {
 		public void emitDirectly() {
 			renderQuad(this);
 		}
-
 	};
 
 	protected BlockState blockState;
 	protected BlockPos blockPos;
 	protected BlockPos.MutableBlockPos tempPos = new BlockPos.MutableBlockPos();
-	protected ChunkSectionLayer defaultLayer;
 
 	protected BlockAndTintGetter renderRegion;
 
@@ -80,11 +79,21 @@ public abstract class AbstractBlockRenderContext extends AbstractRenderContext {
 	protected int cullCompletionFlags;
 	protected int cullResultFlags;
 
-	protected AbstractBlockRenderContext() {
-		this.occlusionCache.defaultReturnValue((byte) 127);
+	// Block tint sources (26.3 replaced BlockColor callbacks with BlockTintSource lists)
+	private final BlockColors blockColors;
+	private final List<@Nullable BlockTintSource> tintSources = new ObjectArrayList<>();
+	private final IntList computedTintValues = new IntArrayList();
+	private boolean tintSourcesInitialized;
+	private int tintCacheIndex = -1;
+	private int tintCacheValue;
 
-		BlockColors blockColors = Minecraft.getInstance().getBlockColors();
-		this.blockColorRegistry = BlockColorsExtended.from(blockColors).getColorResolverMap();
+	protected AbstractBlockRenderContext() {
+		this(Minecraft.getInstance().getBlockColors());
+	}
+
+	protected AbstractBlockRenderContext(BlockColors blockColors) {
+		this.occlusionCache.defaultReturnValue((byte) 127);
+		this.blockColors = blockColors;
 	}
 
 	protected void setupLightPipelines(LightPipeline flatLightPipeline, LightPipeline smoothLightPipeline) {
@@ -100,13 +109,14 @@ public abstract class AbstractBlockRenderContext extends AbstractRenderContext {
 	public void prepareForBlock(BlockState blockState, BlockPos blockPos, boolean modelAo) {
 		this.blockPos = blockPos;
 		this.blockState = blockState;
-		this.defaultLayer = ItemBlockRenderTypes.getChunkRenderType(blockState);
 
 		this.useAO = Minecraft.getInstance().options.ambientOcclusion().get();
 		this.defaultAO = this.useAO && modelAo && blockState.getLightEmission() == 0;
 
 		this.cullCompletionFlags = 0;
 		this.cullResultFlags = 0;
+
+		this.resetTintCache();
 	}
 
 	public boolean isFaceCulled(@Nullable Direction face) {
@@ -136,7 +146,6 @@ public abstract class AbstractBlockRenderContext extends AbstractRenderContext {
 
 	public boolean faceNotOccluded(BlockState blockState, Direction face) {
 		BlockGetter blockGetter = this.renderRegion;
-
 		BlockPos adjPos = tempPos.setWithOffset(blockPos, face);
 		BlockState adjBlockState = blockGetter.getBlockState(adjPos);
 
@@ -166,7 +175,6 @@ public abstract class AbstractBlockRenderContext extends AbstractRenderContext {
 				return b != 0;
 			} else {
 				boolean bl = Shapes.joinIsNotEmpty(shape, adjShape, BooleanOp.ONLY_FIRST);
-
 				if (occlusionCache.size() == 2048) {
 					occlusionCache.removeLastByte();
 				}
@@ -189,8 +197,6 @@ public abstract class AbstractBlockRenderContext extends AbstractRenderContext {
 		this.renderQuad(quadView);
 	}
 
-	protected abstract VertexConsumer getVertexConsumer(ChunkSectionLayer layer);
-
 	private void renderQuad(MutableQuadViewImpl quad) {
 		if (isFaceCulled(quad.cullFace())) {
 			return;
@@ -206,7 +212,7 @@ public abstract class AbstractBlockRenderContext extends AbstractRenderContext {
 		int tintIndex = quad.tintIndex();
 
 		if (tintIndex != -1) {
-			final int blockColor = getBlockColor(this.renderRegion, tintIndex);
+			final int blockColor = 0xFF000000 | getTintColor(tintIndex);
 
 			for (int i = 0; i < 4; i++) {
 				quad.color(i, ColorHelper.multiplyColor(blockColor, quad.color(i)));
@@ -214,58 +220,79 @@ public abstract class AbstractBlockRenderContext extends AbstractRenderContext {
 		}
 	}
 
-	private int getBlockColor(BlockAndTintGetter region, int colorIndex) {
-		BlockColor blockColor = this.blockColorRegistry.getBlockColor(this.blockState.getBlock());
+	private void configureTintCache() {
+		List<BlockTintSource> sources = this.blockColors.getTintSources(this.blockState);
+		int count = sources.size();
 
-		int color = blockColor != null ? blockColor.getColor(blockState, region, blockPos, colorIndex) : -1;
-		return 0xFF000000 | color;
+		if (count > 0) {
+			this.tintSources.addAll(sources);
+
+			for (int i = 0; i < count; ++i) {
+				this.computedTintValues.add(-1);
+			}
+		}
+	}
+
+	private int getTintColor(int tintIndex) {
+		if (this.tintCacheIndex == tintIndex) {
+			return this.tintCacheValue;
+		}
+
+		if (!this.tintSourcesInitialized) {
+			this.configureTintCache();
+			this.tintSourcesInitialized = true;
+		}
+
+		int color;
+		if (tintIndex >= this.tintSources.size()) {
+			color = -1;
+		} else {
+			BlockTintSource tintSource = this.tintSources.set(tintIndex, null);
+
+			if (tintSource != null) {
+				color = tintSource.colorInWorld(this.blockState, this.renderRegion, this.blockPos);
+				this.computedTintValues.set(tintIndex, color);
+			} else {
+				color = this.computedTintValues.getInt(tintIndex);
+			}
+		}
+
+		this.tintCacheIndex = tintIndex;
+		this.tintCacheValue = color;
+		return color;
+	}
+
+	private void resetTintCache() {
+		this.tintCacheIndex = -1;
+
+		if (this.tintSourcesInitialized) {
+			this.tintSources.clear();
+			this.computedTintValues.clear();
+			this.tintSourcesInitialized = false;
+		}
 	}
 
 	protected void shadeQuad(MutableQuadViewImpl quad, LightPipeline lightPipeline, boolean emissive, boolean vanillaShade) {
 		QuadLightData data = this.quadLightData;
 
-		// TODO: enhanced AO
-		lightPipeline.calculate(quad, this.blockPos, data, quad.cullFace(), quad.lightFace(), quad.diffuseShade());
+		// Light pipelines compute light and ambient occlusion; the directional brightness is applied here
+		// so that a shade direction override can replace the quad's own face.
+		lightPipeline.calculate(quad, this.blockPos, data, quad.cullFace(), quad.lightFace(), false);
+
+		Direction shadeDirection = quad.shadeDirectionOverride();
+		float directionalBrightness = this.renderRegion.cardinalLighting().byFace(shadeDirection != null ? shadeDirection : quad.lightFace());
 
 		if (emissive) {
 			for (int i = 0; i < 4; i++) {
-				quad.color(i, ColorHelper.multiplyRGB(quad.color(i), data.br[i]));
-//				quad.lightmap(i, LightCoordsUtil.FULL_BRIGHT);
+				quad.color(i, ColorHelper.multiplyRGB(quad.color(i), data.br[i] * directionalBrightness));
 				data.lm[i] = LightCoordsUtil.FULL_BRIGHT;
 			}
 		} else {
 			for (int i = 0; i < 4; i++) {
-				quad.color(i, ColorHelper.multiplyRGB(quad.color(i), data.br[i]));
-//				quad.lightmap(i, ColorHelper.maxBrightness(quad.lightmap(i), data.lm[i]));
+				quad.color(i, ColorHelper.multiplyRGB(quad.color(i), data.br[i] * directionalBrightness));
 				data.lm[i] = ColorHelper.maxBrightness(quad.lightmap(i), data.lm[i]);
 			}
 		}
-	}
-
-	public ChunkSectionLayer effectiveRenderLayer(@Nullable ChunkSectionLayer quadRenderLayer) {
-		return quadRenderLayer == null ? defaultLayer : quadRenderLayer;
-	}
-
-	public void emitVanillaBlockQuads(BlockStateModel model, @Nullable BlockState state, Supplier<RandomSource> randomSupplier, Predicate<Direction> cullTest) {
-		MutableQuadViewImpl quad = this.editorQuad;
-//		final RenderMaterial defaultMaterial = state.getLightEmission() == 0 ? STANDARD_MATERIAL : NO_AO_MATERIAL;
-
-		for (int i = 0; i <= ModelHelper.NULL_FACE_ID; i++) {
-			final Direction cullFace = ModelHelper.faceFromIndex(i);
-
-			if (cullTest.test(cullFace)) {
-				// Skip entire quad list if possible.
-				continue;
-			}
-
-			final List<BlockModelPart> parts = ((BlockStateModel) this).collectParts(random);
-			final int partCount = parts.size();
-
-			for (int j = 0; j < partCount; j++) {
-				parts.get(j).emitQuads(quad, cullTest);
-			}
-		}
-
 	}
 
 	// TODO move elsewhere
@@ -274,7 +301,6 @@ public abstract class AbstractBlockRenderContext extends AbstractRenderContext {
 			if (object instanceof ShapePairKey shapePairKey && this.first == shapePairKey.first && this.second == shapePairKey.second) {
 				return true;
 			}
-
 			return false;
 		}
 
@@ -282,5 +308,4 @@ public abstract class AbstractBlockRenderContext extends AbstractRenderContext {
 			return System.identityHashCode(this.first) * 31 + System.identityHashCode(this.second);
 		}
 	}
-
 }

@@ -220,7 +220,7 @@ public class SmoothLightPipeline implements LightPipeline {
     }
 
     private void applySidedBrightness(QuadLightData out, Direction face, boolean shade) {
-        float brightness = this.lightCache.getRegion().getShade(face, shade);
+        float brightness = shade ? this.lightCache.getRegion().cardinalLighting().byFace(face) : 1.0f;
         float[] br = out.br;
 
         for (int i = 0; i < br.length; i++) {

@@ -5,7 +5,7 @@ import com.mojang.blaze3d.vertex.*;
 import net.minecraft.util.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.render.TextureSetup;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
@@ -17,9 +17,7 @@ import java.util.List;
 public abstract class GuiRenderer {
 
     public static Minecraft minecraft;
-    public static GuiGraphics guiGraphics;
-    public static PoseStack pose;
-    public static BufferBuilder bufferBuilder;
+    public static GuiGraphicsExtractor guiGraphics;
 
     public static void enableScissor(int i, int j, int k, int l) {
         guiGraphics.enableScissor(i, j, k, l);
@@ -67,7 +65,7 @@ public abstract class GuiRenderer {
     }
 
     public static void drawString(Font font, FormattedCharSequence formattedCharSequence, int x, int y, int color) {
-        guiGraphics.drawString(font, formattedCharSequence, x, y, color);
+        guiGraphics.text(font, formattedCharSequence, x, y, color);
     }
 
     public static void drawString(Font font, Component component, int x, int y, int color, boolean shadow) {
@@ -75,12 +73,12 @@ public abstract class GuiRenderer {
     }
 
     public static void drawString(Font font, FormattedCharSequence formattedCharSequence, int x, int y, int color, boolean shadow) {
-        guiGraphics.drawString(font, formattedCharSequence, x, y, color, shadow);
+        guiGraphics.text(font, formattedCharSequence, x, y, color, shadow);
     }
 
     public static void drawCenteredString(Font font, Component component, int x, int y, int color) {
         FormattedCharSequence formattedCharSequence = component.getVisualOrderText();
-        guiGraphics.drawString(font, formattedCharSequence, x - font.width(formattedCharSequence) / 2, y, color);
+        guiGraphics.text(font, formattedCharSequence, x - font.width(formattedCharSequence) / 2, y, color);
     }
 
     public static void drawScrollingString(Font font, Component component, int x, int y, int maxWidth, int color) {
@@ -113,7 +111,7 @@ public abstract class GuiRenderer {
     }
 
     public static void submitPolygon(RenderPipeline renderPipeline, TextureSetup textureSetup, float[][] vertices, int color) {
-        guiGraphics.guiRenderState.submitGuiElement(
+        guiGraphics.guiRenderState.addGuiElement(
                 new PolygonRenderState(
                         renderPipeline, textureSetup, new Matrix3x2f(), vertices, color, guiGraphics.scissorStack.peek()
                 )

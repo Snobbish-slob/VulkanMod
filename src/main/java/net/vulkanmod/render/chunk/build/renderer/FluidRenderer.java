@@ -2,16 +2,18 @@ package net.vulkanmod.render.chunk.build.renderer;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderHandler;
-import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderHandlerRegistry;
+import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderingRegistry;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.block.FluidModel;
+import net.minecraft.client.renderer.block.FluidStateModelSet;
 import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRendering;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
-import net.minecraft.world.level.BlockAndTintGetter;
+import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluid;
@@ -57,20 +59,27 @@ public class FluidRenderer implements FluidRendering.DefaultRenderer {
         this.resources = resources;
     }
 
-    public void renderLiquid(BlockState blockState, FluidState fluidState, BlockPos blockPos) {
-        FluidRenderHandler handler = FluidRenderHandlerRegistry.INSTANCE.get(fluidState.getType());
+    private FluidStateModelSet fluidModels;
+    private net.minecraft.client.renderer.block.FluidRenderer vanillaRenderer;
 
-        TerrainRenderType renderType = TerrainRenderType.get(ItemBlockRenderTypes.getRenderLayer(fluidState));
+    private FluidStateModelSet fluidModels() {
+        FluidStateModelSet current = Minecraft.getInstance().getModelManager().getFluidStateModelSet();
+        if (current != this.fluidModels) {
+            this.fluidModels = current;
+            this.vanillaRenderer = new net.minecraft.client.renderer.block.FluidRenderer(current);
+        }
+        return current;
+    }
+
+    public void renderLiquid(BlockState blockState, FluidState fluidState, BlockPos blockPos) {
+        FluidModel model = this.fluidModels().get(fluidState);
+        FluidRenderHandler handler = FluidRenderingRegistry.get(fluidState.getType());
+
+        TerrainRenderType renderType = TerrainRenderType.get(model.layer());
         renderType = TerrainRenderType.getRemapped(renderType);
         TerrainBufferBuilder bufferBuilder = this.resources.builderPack.builder(renderType).getBufferBuilder(QuadFacing.UNDEFINED.ordinal());
 
-        // Fallback to water/lava in case there's no handler
-        if (handler == null) {
-            boolean isLava = fluidState.is(FluidTags.LAVA);
-            handler = FluidRenderHandlerRegistry.INSTANCE.get(isLava ? Fluids.LAVA : Fluids.WATER);
-        }
-
-        FluidRendering.render(handler, this.resources.getRegion(),blockPos, bufferBuilder, blockState, fluidState, this);
+        FluidRendering.render(this.vanillaRenderer, handler, this.resources.getRegion(), blockPos, layer -> bufferBuilder, blockState, fluidState, this);
     }
 
     private boolean isFaceOccludedByState(BlockGetter blockGetter, float h, Direction direction, BlockPos blockPos, BlockState blockState) {
@@ -110,15 +119,21 @@ public class FluidRenderer implements FluidRendering.DefaultRenderer {
         return blockAndTintGetter.getBlockState(mBlockPos);
     }
 
-    public void render(FluidRenderHandler handler, BlockAndTintGetter world, BlockPos pos, VertexConsumer vertexConsumer, BlockState blockState, FluidState fluidState) {
-        render(handler, blockState, fluidState, pos, (TerrainBufferBuilder) vertexConsumer);
+    @Override
+    public void render(net.minecraft.client.renderer.block.FluidRenderer fluidRenderer, FluidRenderHandler handler, BlockAndTintGetter world, BlockPos pos, net.minecraft.client.renderer.block.FluidRenderer.Output output, BlockState blockState, FluidState fluidState) {
+        FluidModel model = this.fluidModels().get(fluidState);
+        render(model, blockState, fluidState, pos, (TerrainBufferBuilder) output.getBuilder(model.layer()));
     }
 
-    public void render(FluidRenderHandler handler, BlockState blockState, FluidState fluidState, BlockPos blockPos, TerrainBufferBuilder bufferBuilder) {
+    public void render(FluidModel model, BlockState blockState, FluidState fluidState, BlockPos blockPos, TerrainBufferBuilder bufferBuilder) {
         BlockAndTintGetter region = this.resources.getRegion();
 
-        int color = handler.getFluidColor(region, blockPos, fluidState);
-        TextureAtlasSprite[] sprites = handler.getFluidSprites(region, blockPos, fluidState);
+        int color = model.tintSource() != null ? model.tintSource().colorInWorld(blockState, region, blockPos) : -1;
+        TextureAtlasSprite[] sprites = new TextureAtlasSprite[] {
+                model.stillMaterial().sprite(),
+                model.flowingMaterial().sprite(),
+                model.overlayMaterial() != null ? model.overlayMaterial().sprite() : model.flowingMaterial().sprite()
+        };
 
         float r = ColorUtil.ARGB.unpackR(color);
         float g = ColorUtil.ARGB.unpackG(color);
@@ -150,7 +165,7 @@ public class FluidRenderer implements FluidRendering.DefaultRenderer {
         if (!(rUf || rDf || rEf || rWf || rNf || rSf))
             return;
 
-        float brightnessUp = region.getShade(Direction.UP, true);
+        float brightnessUp = region.cardinalLighting().byFace(Direction.UP);
 
         Fluid fluid = fluidState.getType();
         float height = this.getHeight(region, fluid, blockPos, blockState);
@@ -245,7 +260,7 @@ public class FluidRenderer implements FluidRendering.DefaultRenderer {
             v0 = sprites[0].getV0();
             v1 = sprites[0].getV1();
 
-            float brightness = region.getShade(Direction.DOWN, true);
+            float brightness = region.cardinalLighting().byFace(Direction.DOWN);
 
             setVertex(modelQuad, 0, 0.0f, y, 1.0f, u0, v1);
             setVertex(modelQuad, 1, 0.0f, y, 0.0f, u0, v0);
@@ -339,7 +354,7 @@ public class FluidRenderer implements FluidRendering.DefaultRenderer {
             boolean isOverlay = false;
 
             if (sprites.length > 2) {
-                if (FluidRenderHandlerRegistry.INSTANCE.isBlockTransparent(adjState.getBlock())) {
+                if (FluidRenderingRegistry.isBlockTransparent(adjState.getBlock())) {
                     sprite = sprites[2];
                     isOverlay = true;
                 }
@@ -351,7 +366,7 @@ public class FluidRenderer implements FluidRendering.DefaultRenderer {
             float v1 = sprite.getV((1.0F - h2) * 0.5F);
             float v2 = sprite.getV(0.5F);
 
-            float brightness = region.getShade(direction, true);
+            float brightness = region.cardinalLighting().byFace(direction);
 
             setVertex(modelQuad, 0, x2, h2, z2, u1, v1);
             setVertex(modelQuad, 1, x2, y, z2, u1, v2);
