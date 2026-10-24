@@ -11,10 +11,13 @@ import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.SectionOcclusionGraph;
 import net.minecraft.client.renderer.ShaderManager;
+import net.minecraft.client.renderer.WorldBorderRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
+import net.minecraft.client.renderer.oit.OitRenderPassProvider;
+import net.minecraft.client.renderer.oit.OitStage;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.state.level.ChunkLoadingRenderState;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
@@ -22,6 +25,7 @@ import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.client.resources.model.ModelManager;
 import net.minecraft.client.resources.model.sprite.AtlasManager;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.phys.Vec3;
 import net.vulkanmod.render.chunk.WorldRenderer;
@@ -49,6 +53,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class LevelRendererMixin {
     @Shadow @Final private LevelRenderState levelRenderState;
     @Shadow @Final private GameRenderer gameRenderer;
+    @Shadow @Final private WorldBorderRenderer worldBorderRenderer;
 
     @Shadow public abstract net.minecraft.client.renderer.CloudRenderer cloudRenderer();
 
@@ -58,6 +63,7 @@ public abstract class LevelRendererMixin {
 
     @Unique private final Matrix4f modelView = new Matrix4f();
     @Unique private final Matrix4f projection = new Matrix4f();
+    @Unique private long lastCameraSection = Long.MIN_VALUE;
 
     @Inject(method = "<init>", at = @At("RETURN"))
     private void init(EntityRenderDispatcher entityRenderDispatcher, BlockEntityRenderDispatcher blockEntityRenderDispatcher,
@@ -86,6 +92,20 @@ public abstract class LevelRendererMixin {
     @Overwrite
     public void resetLevelRenderData() {
         this.clearVisibleSections();
+    }
+
+    /**
+     * @author VulkanMod
+     * @reason The vanilla view area and section dispatcher are never created. Only the world
+     * border cache still has to be invalidated when the camera moves to another section.
+     */
+    @Overwrite
+    private void repositionCamera(CameraRenderState camera) {
+        long cameraSection = SectionPos.of(camera.pos).asLong();
+        if (cameraSection != this.lastCameraSection) {
+            this.lastCameraSection = cameraSection;
+            this.worldBorderRenderer.invalidate();
+        }
     }
 
     /**
@@ -135,6 +155,15 @@ public abstract class LevelRendererMixin {
 
             profiler.pop();
         }
+    }
+
+    @Redirect(method = "executeOit",
+              at = @At(value = "INVOKE",
+                       target = "Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;renderOit(Lcom/mojang/renderpearl/api/textures/GpuSampler;Lnet/minecraft/client/renderer/oit/OitStage;Lnet/minecraft/client/renderer/oit/OitRenderPassProvider$Parameters;Lcom/mojang/renderpearl/api/textures/GpuTextureView;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V"))
+    private void skipOitTerrain(ChunkSectionsToRender instance, GpuSampler sampler, OitStage stage, OitRenderPassProvider.Parameters params,
+                                GpuTextureView atlas, GpuTextureView lightmap) {
+        // Translucent terrain is drawn by VulkanMod in the classic transparency pass; there is no
+        // order-independent variant of VulkanMod's terrain shaders.
     }
 
     /**
