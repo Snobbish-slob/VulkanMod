@@ -40,6 +40,7 @@ import static org.lwjgl.vulkan.VK10.*;
 public class VkRenderPipeline implements BackendRenderPipeline {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int POOL_SETS = 128;
+    private static final int ALLOCATION_CHUNK = 32;
 
     private static final Set<VkRenderPipeline> ACTIVE_PIPELINES = new ObjectOpenHashSet<>();
     private static boolean frameListenerRegistered = false;
@@ -542,10 +543,22 @@ public class VkRenderPipeline implements BackendRenderPipeline {
     private class FramePools {
         private final LongArrayList pools = new LongArrayList();
         private final Object2LongOpenHashMap<DescriptorKey> cache = new Object2LongOpenHashMap<>();
+        private final LongArrayList freeSets = new LongArrayList();
         private int poolIndex = -1;
         private int setsLeft = 0;
 
         long allocate() {
+            if (this.freeSets.isEmpty()) {
+                allocateChunk();
+            }
+
+            return this.freeSets.popLong();
+        }
+
+        /**
+         * Sets are allocated several at a time; one driver call instead of one per set.
+         */
+        private void allocateChunk() {
             if (this.setsLeft == 0) {
                 this.poolIndex++;
                 if (this.poolIndex >= this.pools.size()) {
@@ -554,21 +567,31 @@ public class VkRenderPipeline implements BackendRenderPipeline {
                 this.setsLeft = POOL_SETS;
             }
 
+            int count = Math.min(ALLOCATION_CHUNK, this.setsLeft);
+
             try (MemoryStack stack = stackPush()) {
+                LongBuffer layouts = stack.mallocLong(count);
+                for (int i = 0; i < count; i++) {
+                    layouts.put(i, VkRenderPipeline.this.descriptorSetLayout);
+                }
+
                 VkDescriptorSetAllocateInfo allocInfo = VkDescriptorSetAllocateInfo.calloc(stack);
                 allocInfo.sType$Default();
                 allocInfo.descriptorPool(this.pools.getLong(this.poolIndex));
-                allocInfo.pSetLayouts(stack.longs(VkRenderPipeline.this.descriptorSetLayout));
+                allocInfo.pSetLayouts(layouts);
 
-                LongBuffer pSet = stack.mallocLong(1);
-                int result = vkAllocateDescriptorSets(Vulkan.getVkDevice(), allocInfo, pSet);
+                LongBuffer pSets = stack.mallocLong(count);
+                int result = vkAllocateDescriptorSets(Vulkan.getVkDevice(), allocInfo, pSets);
                 if (result != VK_SUCCESS) {
-                    throw new RuntimeException("Failed to allocate descriptor set for pipeline %s: %d".formatted(VkRenderPipeline.this.name, result));
+                    throw new RuntimeException("Failed to allocate descriptor sets for pipeline %s: %d".formatted(VkRenderPipeline.this.name, result));
                 }
 
-                this.setsLeft--;
-                return pSet.get(0);
+                for (int i = 0; i < count; i++) {
+                    this.freeSets.add(pSets.get(i));
+                }
             }
+
+            this.setsLeft -= count;
         }
 
         private long createPool() {
@@ -604,6 +627,7 @@ public class VkRenderPipeline implements BackendRenderPipeline {
             this.poolIndex = -1;
             this.setsLeft = 0;
             this.cache.clear();
+            this.freeSets.clear();
         }
 
         void destroy() {
@@ -614,6 +638,7 @@ public class VkRenderPipeline implements BackendRenderPipeline {
             this.poolIndex = -1;
             this.setsLeft = 0;
             this.cache.clear();
+            this.freeSets.clear();
         }
     }
 }

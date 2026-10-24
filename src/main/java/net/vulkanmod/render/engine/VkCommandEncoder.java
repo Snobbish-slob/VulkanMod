@@ -30,6 +30,7 @@ import org.lwjgl.vulkan.*;
 import org.slf4j.Logger;
 
 import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalDouble;
@@ -61,6 +62,10 @@ public class VkCommandEncoder implements CommandEncoderBackend {
     private final Long2ObjectOpenHashMap<LongArrayList> batchBufferWrites = new Long2ObjectOpenHashMap<>();
     private final Long2ObjectOpenHashMap<IntArrayList> batchImageWrites = new Long2ObjectOpenHashMap<>();
     private final Runnable preSubmitHook = this::flushTransfers;
+
+    // Scratch buffers shared by the render passes of this encoder (passes never overlap)
+    private final ByteBuffer passPushConstants = MemoryUtil.memAlloc(VkRenderPass.MAX_PUSH_CONSTANTS);
+    private final IntBuffer passDynamicOffsets = MemoryUtil.memAllocInt(VkRenderPass.MAX_DYNAMIC_OFFSETS);
 
     public VkCommandEncoder(VkGpuDevice device) {
         this.device = device;
@@ -180,7 +185,8 @@ public class VkCommandEncoder implements CommandEncoderBackend {
         this.renderer.beginRenderPass(renderPass, framebuffer, beginInfo);
 
         this.currentRenderPass = new VkRenderPass(this.renderer, framebuffer, renderPass, renderArea, width, height,
-                                                  depthView != null, descriptor.label());
+                                                  depthView != null, descriptor.label(),
+                                                  this.passPushConstants, this.passDynamicOffsets);
         return this.currentRenderPass;
     }
 
@@ -463,12 +469,33 @@ public class VkCommandEncoder implements CommandEncoderBackend {
             barrier.srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT);
             barrier.dstAccessMask(VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
 
-            vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                 0, barrier, null, null);
+            // Images still in the transfer layout go back to the shader read layout in the same barrier
+            VkImageMemoryBarrier.Buffer imageBarriers = VkImageMemoryBarrier.calloc(this.batchImages.size(), stack);
+            int imageBarrierCount = 0;
 
             for (VulkanImage image : this.batchImages) {
-                image.transitionImageLayout(stack, commandBuffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                if (image.getCurrentLayout() != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+                    continue;
+                }
+
+                VkImageMemoryBarrier imageBarrier = imageBarriers.get(imageBarrierCount++);
+                imageBarrier.sType$Default();
+                imageBarrier.oldLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                imageBarrier.newLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                imageBarrier.srcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
+                imageBarrier.dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
+                imageBarrier.image(image.getId());
+                imageBarrier.subresourceRange().set(image.aspect, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS);
+                imageBarrier.srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT);
+                imageBarrier.dstAccessMask(VK_ACCESS_SHADER_READ_BIT);
+
+                image.setCurrentLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             }
+
+            imageBarriers.limit(imageBarrierCount);
+
+            vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                                 0, barrier, null, imageBarrierCount > 0 ? imageBarriers : null);
         }
 
         this.batchImages.clear();
@@ -684,5 +711,7 @@ public class VkCommandEncoder implements CommandEncoderBackend {
     public void destroy() {
         this.renderer.removePreSubmitHook(this.preSubmitHook);
         this.transientMemory.destroy();
+        MemoryUtil.memFree(this.passPushConstants);
+        MemoryUtil.memFree(this.passDynamicOffsets);
     }
 }

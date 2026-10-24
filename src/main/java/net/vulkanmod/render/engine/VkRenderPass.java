@@ -34,7 +34,8 @@ import static org.lwjgl.vulkan.VK10.*;
 public class VkRenderPass implements RenderPassBackend {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int MAX_VERTEX_BUFFERS = 16;
-    private static final int MAX_PUSH_CONSTANTS = 256;
+    static final int MAX_PUSH_CONSTANTS = 256;
+    static final int MAX_DYNAMIC_OFFSETS = 32;
 
     private final Renderer renderer;
     private final Framebuffer framebuffer;
@@ -54,20 +55,35 @@ public class VkRenderPass implements RenderPassBackend {
     private boolean uniformsDirty;
     private long currentSet;
     private long pipelineHandle;
-    private IntBuffer dynamicOffsets;
+    private final IntBuffer dynamicOffsets;
+
+    // State known to be bound in the command buffer, to skip redundant binds
+    private long boundSet;
+    private final int[] boundDynamicOffsets = new int[MAX_DYNAMIC_OFFSETS];
+    private final long[] boundVertexBufferIds = new long[MAX_VERTEX_BUFFERS];
+    private final long[] boundVertexBufferOffsets = new long[MAX_VERTEX_BUFFERS];
+    private long boundIndexBufferId;
+    private int boundIndexType;
 
     private final GpuBufferSlice[] vertexBuffers = new GpuBufferSlice[MAX_VERTEX_BUFFERS];
     @Nullable private GpuBuffer indexBuffer;
     private IndexType indexType = IndexType.INT;
 
-    private final ByteBuffer pushConstants = MemoryUtil.memAlloc(MAX_PUSH_CONSTANTS);
+    private final ByteBuffer pushConstants;
     private int pushConstantsSize;
 
     private int pushedDebugGroups;
 
+    /**
+     * @param pushConstants  scratch buffer of {@link #MAX_PUSH_CONSTANTS} bytes owned by the encoder
+     * @param dynamicOffsets scratch buffer of {@link #MAX_DYNAMIC_OFFSETS} ints owned by the encoder
+     */
     public VkRenderPass(Renderer renderer, Framebuffer framebuffer, net.vulkanmod.vulkan.framebuffer.RenderPass vkRenderPass,
-                        RenderPass.RenderArea renderArea, int outputWidth, int outputHeight, boolean hasDepth, Supplier<String> label) {
+                        RenderPass.RenderArea renderArea, int outputWidth, int outputHeight, boolean hasDepth, Supplier<String> label,
+                        ByteBuffer pushConstants, IntBuffer dynamicOffsets) {
         this.renderer = renderer;
+        this.pushConstants = pushConstants;
+        this.dynamicOffsets = dynamicOffsets;
         this.framebuffer = framebuffer;
         this.vkRenderPass = vkRenderPass;
         this.renderArea = renderArea;
@@ -76,7 +92,12 @@ public class VkRenderPass implements RenderPassBackend {
         this.hasDepth = hasDepth;
         this.label = label;
         this.commandBufferGeneration = renderer.getCommandBufferGeneration();
-        this.dynamicOffsets = MemoryUtil.memAllocInt(1);
+    }
+
+    private void resetBoundState() {
+        this.boundSet = 0L;
+        Arrays.fill(this.boundVertexBufferIds, 0L);
+        this.boundIndexBufferId = 0L;
     }
 
     private VkCommandBuffer commandBuffer() {
@@ -117,14 +138,16 @@ public class VkRenderPass implements RenderPassBackend {
         // The attachment formats don't change within a pass, so the pipeline handle is resolved once
         this.pipelineHandle = vkPipeline.getHandle(this.vkRenderPass.getColorFormat(), this.vkRenderPass.getDepthFormat());
 
-        if (this.dynamicOffsets.capacity() < Math.max(1, vkPipeline.getDynamicOffsetCount())) {
-            MemoryUtil.memFree(this.dynamicOffsets);
-            this.dynamicOffsets = MemoryUtil.memAllocInt(Math.max(1, vkPipeline.getDynamicOffsetCount()));
+        if (vkPipeline.getDynamicOffsetCount() > MAX_DYNAMIC_OFFSETS) {
+            throw new IllegalStateException("Pipeline uses more than " + MAX_DYNAMIC_OFFSETS + " dynamic uniform buffers");
         }
 
         this.descriptorsDirty = true;
         this.uniformsDirty = true;
         this.pushConstantsSize = 0;
+
+        // A pipeline with a different layout may disturb the bound set, so it is always rebound
+        this.boundSet = 0L;
 
         bindPipeline();
     }
@@ -200,10 +223,19 @@ public class VkRenderPass implements RenderPassBackend {
     }
 
     private void bindVertexBuffer(int slot, GpuBufferSlice vertexBuffer) {
-        try (MemoryStack stack = stackPush()) {
-            VkGpuBuffer buffer = (VkGpuBuffer) vertexBuffer.buffer();
-            vkCmdBindVertexBuffers(commandBuffer(), slot, stack.longs(buffer.getId()), stack.longs(vertexBuffer.offset()));
+        long id = ((VkGpuBuffer) vertexBuffer.buffer()).getId();
+        long offset = vertexBuffer.offset();
+
+        if (this.boundVertexBufferIds[slot] == id && this.boundVertexBufferOffsets[slot] == offset) {
+            return;
         }
+
+        try (MemoryStack stack = stackPush()) {
+            vkCmdBindVertexBuffers(commandBuffer(), slot, stack.longs(id), stack.longs(offset));
+        }
+
+        this.boundVertexBufferIds[slot] = id;
+        this.boundVertexBufferOffsets[slot] = offset;
     }
 
     @Override
@@ -219,8 +251,17 @@ public class VkRenderPass implements RenderPassBackend {
             return;
         }
 
-        VkGpuBuffer buffer = (VkGpuBuffer) this.indexBuffer;
-        vkCmdBindIndexBuffer(commandBuffer(), buffer.getId(), 0L, VkConst.of(this.indexType));
+        long id = ((VkGpuBuffer) this.indexBuffer).getId();
+        int type = VkConst.of(this.indexType);
+
+        if (this.boundIndexBufferId == id && this.boundIndexType == type) {
+            return;
+        }
+
+        vkCmdBindIndexBuffer(commandBuffer(), id, 0L, type);
+
+        this.boundIndexBufferId = id;
+        this.boundIndexType = type;
     }
 
     /**
@@ -235,6 +276,7 @@ public class VkRenderPass implements RenderPassBackend {
         long generation = this.renderer.getCommandBufferGeneration();
         if (generation != this.commandBufferGeneration) {
             this.commandBufferGeneration = generation;
+            resetBoundState();
 
             for (int i = 0; i < MAX_VERTEX_BUFFERS; i++) {
                 if (this.vertexBuffers[i] != null) {
@@ -293,21 +335,31 @@ public class VkRenderPass implements RenderPassBackend {
             }
 
             int dynamicCount = this.pipeline.getDynamicOffsetCount();
+            boolean changed = this.currentSet != this.boundSet;
+
             for (int i = 0; i < uniformCount; i++) {
                 int dynamicIndex = this.pipeline.getDynamicOffsetIndex(i);
                 if (dynamicIndex >= 0) {
                     int offset = this.uniformValues[i] instanceof GpuBufferSlice slice ? (int) slice.offset() : 0;
+                    if (this.boundDynamicOffsets[dynamicIndex] != offset) {
+                        this.boundDynamicOffsets[dynamicIndex] = offset;
+                        changed = true;
+                    }
                     this.dynamicOffsets.put(dynamicIndex, offset);
                 }
             }
 
-            this.dynamicOffsets.position(0);
-            this.dynamicOffsets.limit(dynamicCount);
+            // Same set with the same offsets is already bound
+            if (changed) {
+                this.dynamicOffsets.position(0);
+                this.dynamicOffsets.limit(dynamicCount);
 
-            vkCmdBindDescriptorSets(commandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, this.pipeline.getLayout(),
-                                    0, stack.longs(this.currentSet), dynamicCount > 0 ? this.dynamicOffsets : null);
+                vkCmdBindDescriptorSets(commandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, this.pipeline.getLayout(),
+                                        0, stack.longs(this.currentSet), dynamicCount > 0 ? this.dynamicOffsets : null);
 
-            this.dynamicOffsets.limit(this.dynamicOffsets.capacity());
+                this.dynamicOffsets.limit(this.dynamicOffsets.capacity());
+                this.boundSet = this.currentSet;
+            }
         }
 
         this.descriptorsDirty = false;
@@ -490,8 +542,5 @@ public class VkRenderPass implements RenderPassBackend {
         while (this.pushedDebugGroups > 0) {
             popDebugGroup();
         }
-
-        MemoryUtil.memFree(this.pushConstants);
-        MemoryUtil.memFree(this.dynamicOffsets);
     }
 }
