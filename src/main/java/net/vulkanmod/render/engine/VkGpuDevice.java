@@ -81,7 +81,9 @@ public class VkGpuDevice implements GpuDeviceBackend {
                 true
         );
 
-        HintsAndWorkarounds hints = new HintsAndWorkarounds(false, false, false, false);
+        // writeToBufferIsSlow makes vanilla write vertex data straight into a persistently
+        // mapped ring buffer and copy on the GPU, instead of a CPU copy through staging memory
+        HintsAndWorkarounds hints = new HintsAndWorkarounds(true, false, false, false);
 
         DeviceType deviceType = switch (device.deviceType) {
             case VK10.VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU -> DeviceType.INTEGRATED;

@@ -10,6 +10,7 @@ import com.mojang.renderpearl.backend.api.BackendRenderPipeline;
 import com.mojang.renderpearl.backend.api.SpvModule;
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.Vulkan;
@@ -21,6 +22,7 @@ import org.slf4j.Logger;
 
 import java.nio.ByteBuffer;
 import java.nio.LongBuffer;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -429,6 +431,40 @@ public class VkRenderPipeline implements BackendRenderPipeline {
         return this.framePools[frame].allocate();
     }
 
+    /**
+     * Returns a descriptor set written earlier this frame for exactly these binding keys, or 0.
+     */
+    public long findDescriptorSet(int frame, long[] bindingKeys) {
+        return this.framePools[frame].cache.getLong(new DescriptorKey(bindingKeys, false));
+    }
+
+    public void cacheDescriptorSet(int frame, long[] bindingKeys, long set) {
+        this.framePools[frame].cache.put(new DescriptorKey(bindingKeys, true), set);
+    }
+
+    /**
+     * Binding keys of a descriptor set, used to reuse sets within a frame.
+     */
+    private static final class DescriptorKey {
+        private final long[] keys;
+        private final int hash;
+
+        DescriptorKey(long[] keys, boolean copy) {
+            this.keys = copy ? keys.clone() : keys;
+            this.hash = Arrays.hashCode(keys);
+        }
+
+        @Override
+        public int hashCode() {
+            return this.hash;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof DescriptorKey other && other.hash == this.hash && Arrays.equals(other.keys, this.keys);
+        }
+    }
+
     public long getLayout() {
         return this.pipelineLayout;
     }
@@ -505,6 +541,7 @@ public class VkRenderPipeline implements BackendRenderPipeline {
      */
     private class FramePools {
         private final LongArrayList pools = new LongArrayList();
+        private final Object2LongOpenHashMap<DescriptorKey> cache = new Object2LongOpenHashMap<>();
         private int poolIndex = -1;
         private int setsLeft = 0;
 
@@ -566,6 +603,7 @@ public class VkRenderPipeline implements BackendRenderPipeline {
             }
             this.poolIndex = -1;
             this.setsLeft = 0;
+            this.cache.clear();
         }
 
         void destroy() {
@@ -575,6 +613,7 @@ public class VkRenderPipeline implements BackendRenderPipeline {
             this.pools.clear();
             this.poolIndex = -1;
             this.setsLeft = 0;
+            this.cache.clear();
         }
     }
 }

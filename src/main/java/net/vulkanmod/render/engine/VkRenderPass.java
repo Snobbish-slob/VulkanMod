@@ -53,6 +53,7 @@ public class VkRenderPass implements RenderPassBackend {
     private boolean descriptorsDirty;
     private boolean uniformsDirty;
     private long currentSet;
+    private long pipelineHandle;
     private IntBuffer dynamicOffsets;
 
     private final GpuBufferSlice[] vertexBuffers = new GpuBufferSlice[MAX_VERTEX_BUFFERS];
@@ -110,8 +111,11 @@ public class VkRenderPass implements RenderPassBackend {
 
         int uniformCount = vkPipeline.getUniformCount();
         this.uniformValues = new Object[uniformCount];
-        this.boundKeys = new long[uniformCount];
+        this.boundKeys = new long[uniformCount * 2];
         Arrays.fill(this.boundKeys, Long.MIN_VALUE);
+
+        // The attachment formats don't change within a pass, so the pipeline handle is resolved once
+        this.pipelineHandle = vkPipeline.getHandle(this.vkRenderPass.getColorFormat(), this.vkRenderPass.getDepthFormat());
 
         if (this.dynamicOffsets.capacity() < Math.max(1, vkPipeline.getDynamicOffsetCount())) {
             MemoryUtil.memFree(this.dynamicOffsets);
@@ -130,8 +134,7 @@ public class VkRenderPass implements RenderPassBackend {
             return;
         }
 
-        long handle = this.pipeline.getHandle(this.vkRenderPass.getColorFormat(), this.vkRenderPass.getDepthFormat());
-        this.renderer.bindPipelineHandle(handle);
+        this.renderer.bindPipelineHandle(this.pipelineHandle);
     }
 
     @Override
@@ -263,15 +266,30 @@ public class VkRenderPass implements RenderPassBackend {
 
         // Check whether the bound resources changed (dynamic offsets alone don't need a new set)
         for (int i = 0; i < uniformCount && !needsNewSet; i++) {
-            if (bindingKey(i) != this.boundKeys[i]) {
+            if (bindingKey(i, false) != this.boundKeys[i * 2] || bindingKey(i, true) != this.boundKeys[i * 2 + 1]) {
                 needsNewSet = true;
             }
         }
 
         try (MemoryStack stack = stackPush()) {
             if (needsNewSet) {
-                this.currentSet = this.pipeline.allocateDescriptorSet(Renderer.getCurrentFrame());
-                writeDescriptorSet(stack, uniformCount);
+                for (int i = 0; i < uniformCount; i++) {
+                    this.boundKeys[i * 2] = bindingKey(i, false);
+                    this.boundKeys[i * 2 + 1] = bindingKey(i, true);
+                }
+
+                int frame = Renderer.getCurrentFrame();
+
+                // Sets written earlier this frame for the same resources are reused
+                long cachedSet = this.pipeline.findDescriptorSet(frame, this.boundKeys);
+                if (cachedSet != 0L) {
+                    this.currentSet = cachedSet;
+                }
+                else {
+                    this.currentSet = this.pipeline.allocateDescriptorSet(frame);
+                    writeDescriptorSet(stack, uniformCount);
+                    this.pipeline.cacheDescriptorSet(frame, this.boundKeys, this.currentSet);
+                }
             }
 
             int dynamicCount = this.pipeline.getDynamicOffsetCount();
@@ -295,17 +313,18 @@ public class VkRenderPass implements RenderPassBackend {
         this.descriptorsDirty = false;
     }
 
-    private long bindingKey(int binding) {
+    /**
+     * Identity of the resource bound at a binding, as two longs (handle, then size or sampler)
+     * so that distinct resources never share a key. Dynamic buffer offsets are not part of it.
+     */
+    private long bindingKey(int binding, boolean second) {
         Object value = this.uniformValues[binding];
 
         if (value instanceof GpuBufferSlice slice) {
-            long id = ((VkGpuBuffer) slice.buffer()).getId();
-            return id * 31L + slice.length();
+            return second ? slice.length() : ((VkGpuBuffer) slice.buffer()).getId();
         }
         else if (value instanceof TextureViewAndSampler pair) {
-            long view = ((VkTextureView) pair.view()).getImageView();
-            long sampler = ((VkSampler) pair.sampler()).getId();
-            return view * 31L + sampler;
+            return second ? ((VkSampler) pair.sampler()).getId() : ((VkTextureView) pair.view()).getImageView();
         }
 
         return 0L;
@@ -317,7 +336,6 @@ public class VkRenderPass implements RenderPassBackend {
 
         for (int i = 0; i < uniformCount; i++) {
             Object value = this.uniformValues[i];
-            this.boundKeys[i] = bindingKey(i);
 
             if (value == null) {
                 continue;
