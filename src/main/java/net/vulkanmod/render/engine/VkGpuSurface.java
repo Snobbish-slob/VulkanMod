@@ -167,7 +167,10 @@ public class VkGpuSurface implements GpuSurfaceBackend, Renderer.FrameListener {
         }
 
         this.acquired = true;
-        this.renderer.addWaitSemaphore(semaphore, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+
+        // The swapchain image is first touched by the blit, so only the transfer stage has to
+        // wait for it; the frame's render passes can start before the image is available
+        this.renderer.addWaitSemaphore(semaphore, VK_PIPELINE_STAGE_TRANSFER_BIT);
     }
 
     @Override
@@ -192,7 +195,10 @@ public class VkGpuSurface implements GpuSurfaceBackend, Renderer.FrameListener {
         try (MemoryStack stack = stackPush()) {
             int prevLayout = srcImage.getCurrentLayout();
             srcImage.transitionImageLayout(stack, commandBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-            dstImage.transitionImageLayout(stack, commandBuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            // Source stage matches the acquire semaphore's wait stage so the transition is
+            // ordered after the image became available
+            VulkanImage.transitionLayout(stack, commandBuffer, dstImage, dstImage.getCurrentLayout(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 
             // Render targets use the OpenGL (bottom-up) memory layout, so the blit flips vertically
             VkImageBlit.Buffer blit = VkImageBlit.calloc(1, stack);
